@@ -228,12 +228,14 @@ export function useFaceMeshPupilTracking() {
     if (canvas) canvasRef.current = canvas;
     
     try {
-      // Dynamic import of MediaPipe Face Mesh
-      const { FaceMesh } = await import('@mediapipe/face_mesh');
+      // Import MediaPipe Face Mesh from npm package
+      const FaceMeshModule = await import('@mediapipe/face_mesh');
+      const FaceMesh = FaceMeshModule.FaceMesh;
       
       const faceMesh = new FaceMesh({
         locateFile: (file: string) => {
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+          // Use local node_modules path for bundled files
+          return `/node_modules/@mediapipe/face_mesh/${file}`;
         }
       });
       
@@ -244,7 +246,7 @@ export function useFaceMeshPupilTracking() {
         minTrackingConfidence: 0.5
       });
       
-      faceMesh.onResults((results: any) => {
+      faceMesh.onResults((results: { multiFaceLandmarks?: unknown[][] }) => {
         if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
           processLandmarks(results.multiFaceLandmarks[0]);
         }

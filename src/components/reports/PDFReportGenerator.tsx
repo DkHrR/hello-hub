@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import type { DiagnosticResult, EyeTrackingMetrics, VoiceMetrics, HandwritingMetrics } from '@/types/diagnostic';
+import logger from '@/lib/logger';
 import { 
   FileText, 
   Download, 
@@ -241,7 +242,7 @@ export function PDFReportGenerator({
           pdf.addImage(imgData, 'PNG', margin, yPos, imgWidth, Math.min(imgHeight, 80));
           yPos += Math.min(imgHeight, 80) + 10;
         } catch (error) {
-          console.error('Failed to capture heatmap:', error);
+          logger.error('Failed to capture heatmap', error);
         }
       }
 
@@ -289,7 +290,7 @@ export function PDFReportGenerator({
       pdf.save(`NeuroRead_Report_${studentName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
 
     } catch (error) {
-      console.error('PDF generation failed:', error);
+      logger.error('PDF generation failed', error);
     } finally {
       setIsGenerating(false);
       setProgress(0);

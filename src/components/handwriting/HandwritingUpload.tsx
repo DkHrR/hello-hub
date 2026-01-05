@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import type { HandwritingMetrics } from '@/types/diagnostic';
+import logger from '@/lib/logger';
 import { 
   Upload, 
   FileImage, 
@@ -45,7 +46,7 @@ export function HandwritingUpload({ onAnalysisComplete }: HandwritingUploadProps
         setMetrics(result);
         onAnalysisComplete(result);
       } catch (error) {
-        console.error('Analysis failed:', error);
+        logger.error('Handwriting analysis failed', error);
       }
     }
   }, [analyzeImage, onAnalysisComplete]);
