@@ -136,9 +136,9 @@ export function useDiagnosticEngine() {
     };
   }, [calculateDyslexiaIndex, calculateADHDIndex, calculateDysgraphiaIndex, determineRiskLevel]);
 
-  // Save diagnostic result to database
+  // Save diagnostic result to database via assessment_results table
   const saveDiagnosticResult = useCallback(async (
-    studentId: string,
+    assessmentId: string,
     sessionId: string,
     result: DiagnosticResult,
     fixations: Fixation[],
@@ -146,44 +146,59 @@ export function useDiagnosticEngine() {
   ) => {
     if (!user) throw new Error('User not authenticated');
 
-    // Save to diagnostic_results table (the actual table in the database)
+    // Calculate scores as percentages for the assessment_results table
+    const overallRiskScore = Math.max(
+      result.dyslexiaProbabilityIndex,
+      result.adhdProbabilityIndex,
+      result.dysgraphiaProbabilityIndex
+    );
+
+    // Prepare raw data with all metrics
+    const rawData = {
+      sessionId,
+      eyeTracking: result.eyeTracking,
+      voice: result.voice,
+      handwriting: result.handwriting,
+      cognitiveLoad: result.cognitiveLoad,
+      dyslexiaProbabilityIndex: result.dyslexiaProbabilityIndex,
+      adhdProbabilityIndex: result.adhdProbabilityIndex,
+      dysgraphiaProbabilityIndex: result.dysgraphiaProbabilityIndex,
+      fixationCount: fixations.length,
+      saccadeCount: saccades.length
+    };
+
+    // Generate recommendations
+    const recommendations = generateRecommendations(result);
+
+    // Save to assessment_results table
     const { error: resultError } = await supabase
-      .from('diagnostic_results')
-      .insert({
-        student_id: studentId,
-        clinician_id: user.id,
-        session_id: sessionId,
-        overall_risk_level: result.overallRiskLevel,
-        dyslexia_probability_index: result.dyslexiaProbabilityIndex,
-        adhd_probability_index: result.adhdProbabilityIndex,
-        dysgraphia_probability_index: result.dysgraphiaProbabilityIndex,
-        eye_total_fixations: fixations.length,
-        eye_avg_fixation_duration: result.eyeTracking.averageFixationDuration,
-        eye_regression_count: result.eyeTracking.regressionCount,
-        eye_prolonged_fixations: result.eyeTracking.prolongedFixations,
-        eye_chaos_index: result.eyeTracking.chaosIndex,
-        eye_fixation_intersection_coefficient: result.eyeTracking.fixationIntersectionCoefficient,
-        voice_words_per_minute: result.voice.wordsPerMinute,
-        voice_pause_count: result.voice.pauseCount,
-        voice_avg_pause_duration: result.voice.averagePauseDuration,
-        voice_phonemic_errors: result.voice.phonemicErrors,
-        voice_fluency_score: result.voice.fluencyScore,
-        voice_prosody_score: result.voice.prosodyScore,
-        voice_stall_count: result.voice.stallCount,
-        voice_avg_stall_duration: result.voice.averageStallDuration,
-        voice_stall_events: JSON.parse(JSON.stringify(result.voice.stallEvents || [])),
-        handwriting_reversal_count: result.handwriting.reversalCount,
-        handwriting_letter_crowding: result.handwriting.letterCrowding,
-        handwriting_graphic_inconsistency: result.handwriting.graphicInconsistency,
-        handwriting_line_adherence: result.handwriting.lineAdherence,
-        cognitive_avg_pupil_dilation: result.cognitiveLoad.averagePupilDilation,
-        cognitive_overload_events: result.cognitiveLoad.overloadEvents,
-        cognitive_stress_indicators: result.cognitiveLoad.stressIndicators,
-        fixation_data: JSON.parse(JSON.stringify(fixations)),
-        saccade_data: JSON.parse(JSON.stringify(saccades)),
-      });
+      .from('assessment_results')
+      .insert([{
+        assessment_id: assessmentId,
+        overall_risk_score: overallRiskScore,
+        reading_fluency_score: result.voice.fluencyScore,
+        phonological_awareness_score: 100 - (result.voice.phonemicErrors * 10),
+        visual_processing_score: 100 - (result.eyeTracking.chaosIndex * 100),
+        attention_score: 100 - (result.adhdProbabilityIndex * 100),
+        recommendations: JSON.parse(JSON.stringify(recommendations)),
+        raw_data: JSON.parse(JSON.stringify(rawData))
+      }]);
 
     if (resultError) throw resultError;
+
+    // Save eye tracking data
+    const { error: eyeError } = await supabase
+      .from('eye_tracking_data')
+      .insert([{
+        assessment_id: assessmentId,
+        fixation_points: JSON.parse(JSON.stringify(fixations)),
+        saccade_patterns: JSON.parse(JSON.stringify(saccades)),
+        regression_count: result.eyeTracking.regressionCount,
+        average_fixation_duration: result.eyeTracking.averageFixationDuration,
+        reading_speed_wpm: result.voice.wordsPerMinute
+      }]);
+
+    if (eyeError) throw eyeError;
 
     return { success: true };
   }, [user]);

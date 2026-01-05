@@ -21,9 +21,9 @@ import { TrendingUp, Calendar, User } from 'lucide-react';
 interface ProgressDataPoint {
   date: string;
   overallRisk: number;
-  dyslexiaIndex: number;
-  adhdIndex: number;
-  dysgraphiaIndex: number;
+  fluencyScore: number;
+  visualScore: number;
+  attentionScore: number;
 }
 
 interface StudentProgressChartProps {
@@ -46,13 +46,13 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
 
       const { data, error } = await supabase
         .from('students')
-        .select('id, name')
-        .order('name');
+        .select('id, first_name, last_name')
+        .order('first_name');
 
       if (!error && data) {
         const formattedStudents = data.map(s => ({
           id: s.id,
-          name: s.name
+          name: `${s.first_name} ${s.last_name}`
         }));
         setStudents(formattedStudents);
         if (!selectedStudent && formattedStudents.length > 0) {
@@ -91,26 +91,36 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
           break;
       }
 
-      // Get diagnostic results for this student
+      // Get assessment results for this student via assessments table
+      const { data: assessments, error: assessmentError } = await supabase
+        .from('assessments')
+        .select('id')
+        .eq('student_id', selectedStudent);
+
+      if (assessmentError || !assessments) {
+        setIsLoading(false);
+        return;
+      }
+
+      const assessmentIds = assessments.map(a => a.id);
+      
+      if (assessmentIds.length === 0) {
+        setProgressData([]);
+        setIsLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
-        .from('diagnostic_results')
-        .select(`
-          created_at,
-          overall_risk_level,
-          dyslexia_probability_index,
-          adhd_probability_index,
-          dysgraphia_probability_index
-        `)
-        .eq('student_id', selectedStudent)
+        .from('assessment_results')
+        .select('created_at, overall_risk_score, reading_fluency_score, visual_processing_score, attention_score')
+        .in('assessment_id', assessmentIds)
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: true });
 
       if (!error && data) {
         const formattedData: ProgressDataPoint[] = data.map(record => {
-          // Convert risk level to numeric score
-          const riskScore = record.overall_risk_level === 'high' ? 80 
-            : record.overall_risk_level === 'medium' ? 50 
-            : 20;
+          // Convert risk score to percentage
+          const riskScore = (record.overall_risk_score ?? 0) * 100;
           
           return {
             date: new Date(record.created_at).toLocaleDateString('en-US', {
@@ -118,9 +128,9 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
               day: 'numeric'
             }),
             overallRisk: riskScore,
-            dyslexiaIndex: (record.dyslexia_probability_index || 0) * 100,
-            adhdIndex: (record.adhd_probability_index || 0) * 100,
-            dysgraphiaIndex: (record.dysgraphia_probability_index || 0) * 100,
+            fluencyScore: record.reading_fluency_score ?? 0,
+            visualScore: record.visual_processing_score ?? 0,
+            attentionScore: record.attention_score ?? 0,
           };
         });
         
@@ -204,11 +214,11 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
                     <stop offset="5%" stopColor="hsl(var(--destructive))" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="dyslexiaGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--warning))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--warning))" stopOpacity={0} />
+                  <linearGradient id="fluencyGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="adhdGradient" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="attentionGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0} />
                   </linearGradient>
@@ -235,25 +245,25 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
                 <Area
                   type="monotone"
                   dataKey="overallRisk"
-                  name="Overall Risk"
+                  name="Risk Score"
                   stroke="hsl(var(--destructive))"
                   fill="url(#overallGradient)"
                   strokeWidth={2}
                 />
                 <Area
                   type="monotone"
-                  dataKey="dyslexiaIndex"
-                  name="Dyslexia Index"
-                  stroke="hsl(var(--warning))"
-                  fill="url(#dyslexiaGradient)"
+                  dataKey="fluencyScore"
+                  name="Reading Fluency"
+                  stroke="hsl(var(--primary))"
+                  fill="url(#fluencyGradient)"
                   strokeWidth={2}
                 />
                 <Area
                   type="monotone"
-                  dataKey="adhdIndex"
-                  name="ADHD Index"
+                  dataKey="attentionScore"
+                  name="Attention"
                   stroke="hsl(var(--success))"
-                  fill="url(#adhdGradient)"
+                  fill="url(#attentionGradient)"
                   strokeWidth={2}
                 />
               </AreaChart>
@@ -264,21 +274,21 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
               {[
                 { 
                   key: 'overallRisk' as const, 
-                  label: 'Overall Risk', 
+                  label: 'Risk Score', 
                   color: 'destructive',
                   goodDirection: 'down'
                 },
                 { 
-                  key: 'dyslexiaIndex' as const, 
-                  label: 'Dyslexia Index', 
-                  color: 'warning',
-                  goodDirection: 'down'
+                  key: 'fluencyScore' as const, 
+                  label: 'Fluency', 
+                  color: 'primary',
+                  goodDirection: 'up'
                 },
                 { 
-                  key: 'adhdIndex' as const, 
-                  label: 'ADHD Index', 
+                  key: 'attentionScore' as const, 
+                  label: 'Attention', 
                   color: 'success',
-                  goodDirection: 'down'
+                  goodDirection: 'up'
                 },
               ].map(item => {
                 const trend = calculateTrend(progressData, item.key);

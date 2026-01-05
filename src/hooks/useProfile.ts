@@ -6,18 +6,25 @@ import { toast } from 'sonner';
 // Match the actual database schema for profiles
 export interface Profile {
   id: string;
-  user_id: string;
-  display_name: string | null;
-  title: string | null;
+  email: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
   organization: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface ProfileUpdate {
-  display_name?: string;
-  title?: string;
+  full_name?: string;
+  avatar_url?: string;
   organization?: string;
+}
+
+export interface UserRole {
+  id: string;
+  user_id: string;
+  role: 'admin' | 'educator' | 'clinician' | 'parent';
+  created_at: string;
 }
 
 export function useProfile() {
@@ -32,11 +39,27 @@ export function useProfile() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .maybeSingle();
 
       if (error) throw error;
       return data as Profile | null;
+    },
+    enabled: !!user,
+  });
+
+  const rolesQuery = useQuery({
+    queryKey: ['user_roles', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      return data as UserRole[];
     },
     enabled: !!user,
   });
@@ -48,7 +71,7 @@ export function useProfile() {
       const { data, error } = await supabase
         .from('profiles')
         .update(updates)
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .select()
         .single();
 
@@ -64,10 +87,26 @@ export function useProfile() {
     },
   });
 
+  // Helper functions to check roles
+  const hasRole = (role: 'admin' | 'educator' | 'clinician' | 'parent'): boolean => {
+    return rolesQuery.data?.some(r => r.role === role) ?? false;
+  };
+
+  const isAdmin = hasRole('admin');
+  const isEducator = hasRole('educator');
+  const isClinician = hasRole('clinician');
+  const isParent = hasRole('parent');
+
   return {
     profile: profileQuery.data,
-    isLoading: profileQuery.isLoading,
+    roles: rolesQuery.data ?? [],
+    isLoading: profileQuery.isLoading || rolesQuery.isLoading,
     isError: profileQuery.isError,
     updateProfile,
+    hasRole,
+    isAdmin,
+    isEducator,
+    isClinician,
+    isParent
   };
 }

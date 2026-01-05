@@ -3,32 +3,36 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-// Match the actual database schema
+// Match the actual database schema for students
 export interface Student {
   id: string;
-  clinician_id: string;
-  name: string;
-  age: number;
-  grade: string;
-  risk_level: string | null;
+  created_by: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string | null;
+  grade_level: string | null;
+  school: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface StudentInsert {
-  name: string;
-  age: number;
-  grade: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth?: string | null;
+  grade_level?: string | null;
+  school?: string | null;
   notes?: string | null;
 }
 
 export interface StudentUpdate {
-  name?: string;
-  age?: number;
-  grade?: string;
+  first_name?: string;
+  last_name?: string;
+  date_of_birth?: string | null;
+  grade_level?: string | null;
+  school?: string | null;
   notes?: string | null;
-  risk_level?: string | null;
 }
 
 export function useStudents() {
@@ -44,7 +48,7 @@ export function useStudents() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as Student[];
+      return data;
     },
     enabled: !!user,
   });
@@ -55,15 +59,15 @@ export function useStudents() {
       
       const { data, error } = await supabase
         .from('students')
-        .insert({
+        .insert([{
           ...student,
-          clinician_id: user.id,
-        })
+          created_by: user.id,
+        }])
         .select()
         .single();
 
       if (error) throw error;
-      return data as Student;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students'] });
@@ -84,7 +88,7 @@ export function useStudents() {
         .single();
 
       if (error) throw error;
-      return data as Student;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students'] });

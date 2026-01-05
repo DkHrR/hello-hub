@@ -10,6 +10,7 @@ import Assessment from "./pages/Assessment";
 import ReadingLab from "./pages/ReadingLab";
 import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
+import StudentProfile from "./pages/StudentProfile";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -43,6 +44,11 @@ const App = () => (
             <Route path="/students" element={
               <ProtectedRoute>
                 <Students />
+              </ProtectedRoute>
+            } />
+            <Route path="/student/:studentId" element={
+              <ProtectedRoute>
+                <StudentProfile />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />

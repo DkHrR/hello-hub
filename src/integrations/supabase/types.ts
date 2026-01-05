@@ -14,115 +14,94 @@ export type Database = {
   }
   public: {
     Tables: {
-      diagnostic_results: {
+      assessment_results: {
         Row: {
-          adhd_probability_index: number | null
-          clinician_id: string
-          cognitive_avg_pupil_dilation: number | null
-          cognitive_overload_events: number | null
-          cognitive_stress_indicators: number | null
+          assessment_id: string
+          attention_score: number | null
           created_at: string
-          dysgraphia_probability_index: number | null
-          dyslexia_probability_index: number | null
-          eye_avg_fixation_duration: number | null
-          eye_chaos_index: number | null
-          eye_fixation_intersection_coefficient: number | null
-          eye_prolonged_fixations: number | null
-          eye_regression_count: number | null
-          eye_total_fixations: number | null
-          fixation_data: Json | null
-          handwriting_graphic_inconsistency: number | null
-          handwriting_letter_crowding: number | null
-          handwriting_line_adherence: number | null
-          handwriting_reversal_count: number | null
           id: string
-          overall_risk_level: string | null
-          saccade_data: Json | null
-          session_id: string
-          student_id: string
-          voice_avg_pause_duration: number | null
-          voice_avg_stall_duration: number | null
-          voice_fluency_score: number | null
-          voice_pause_count: number | null
-          voice_phonemic_errors: number | null
-          voice_prosody_score: number | null
-          voice_stall_count: number | null
-          voice_stall_events: Json | null
-          voice_words_per_minute: number | null
+          overall_risk_score: number | null
+          phonological_awareness_score: number | null
+          raw_data: Json | null
+          reading_fluency_score: number | null
+          recommendations: Json | null
+          visual_processing_score: number | null
         }
         Insert: {
-          adhd_probability_index?: number | null
-          clinician_id: string
-          cognitive_avg_pupil_dilation?: number | null
-          cognitive_overload_events?: number | null
-          cognitive_stress_indicators?: number | null
+          assessment_id: string
+          attention_score?: number | null
           created_at?: string
-          dysgraphia_probability_index?: number | null
-          dyslexia_probability_index?: number | null
-          eye_avg_fixation_duration?: number | null
-          eye_chaos_index?: number | null
-          eye_fixation_intersection_coefficient?: number | null
-          eye_prolonged_fixations?: number | null
-          eye_regression_count?: number | null
-          eye_total_fixations?: number | null
-          fixation_data?: Json | null
-          handwriting_graphic_inconsistency?: number | null
-          handwriting_letter_crowding?: number | null
-          handwriting_line_adherence?: number | null
-          handwriting_reversal_count?: number | null
           id?: string
-          overall_risk_level?: string | null
-          saccade_data?: Json | null
-          session_id: string
-          student_id: string
-          voice_avg_pause_duration?: number | null
-          voice_avg_stall_duration?: number | null
-          voice_fluency_score?: number | null
-          voice_pause_count?: number | null
-          voice_phonemic_errors?: number | null
-          voice_prosody_score?: number | null
-          voice_stall_count?: number | null
-          voice_stall_events?: Json | null
-          voice_words_per_minute?: number | null
+          overall_risk_score?: number | null
+          phonological_awareness_score?: number | null
+          raw_data?: Json | null
+          reading_fluency_score?: number | null
+          recommendations?: Json | null
+          visual_processing_score?: number | null
         }
         Update: {
-          adhd_probability_index?: number | null
-          clinician_id?: string
-          cognitive_avg_pupil_dilation?: number | null
-          cognitive_overload_events?: number | null
-          cognitive_stress_indicators?: number | null
+          assessment_id?: string
+          attention_score?: number | null
           created_at?: string
-          dysgraphia_probability_index?: number | null
-          dyslexia_probability_index?: number | null
-          eye_avg_fixation_duration?: number | null
-          eye_chaos_index?: number | null
-          eye_fixation_intersection_coefficient?: number | null
-          eye_prolonged_fixations?: number | null
-          eye_regression_count?: number | null
-          eye_total_fixations?: number | null
-          fixation_data?: Json | null
-          handwriting_graphic_inconsistency?: number | null
-          handwriting_letter_crowding?: number | null
-          handwriting_line_adherence?: number | null
-          handwriting_reversal_count?: number | null
           id?: string
-          overall_risk_level?: string | null
-          saccade_data?: Json | null
-          session_id?: string
-          student_id?: string
-          voice_avg_pause_duration?: number | null
-          voice_avg_stall_duration?: number | null
-          voice_fluency_score?: number | null
-          voice_pause_count?: number | null
-          voice_phonemic_errors?: number | null
-          voice_prosody_score?: number | null
-          voice_stall_count?: number | null
-          voice_stall_events?: Json | null
-          voice_words_per_minute?: number | null
+          overall_risk_score?: number | null
+          phonological_awareness_score?: number | null
+          raw_data?: Json | null
+          reading_fluency_score?: number | null
+          recommendations?: Json | null
+          visual_processing_score?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "diagnostic_results_student_id_fkey"
+            foreignKeyName: "assessment_results_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessments: {
+        Row: {
+          assessment_type: Database["public"]["Enums"]["assessment_type"]
+          assessor_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["assessment_status"]
+          student_id: string
+        }
+        Insert: {
+          assessment_type?: Database["public"]["Enums"]["assessment_type"]
+          assessor_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["assessment_status"]
+          student_id: string
+        }
+        Update: {
+          assessment_type?: Database["public"]["Enums"]["assessment_type"]
+          assessor_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["assessment_status"]
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessments_assessor_id_fkey"
+            columns: ["assessor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessments_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "students"
@@ -130,49 +109,97 @@ export type Database = {
           },
         ]
       }
-      handwriting_samples: {
+      eye_tracking_data: {
         Row: {
-          analysis_complete: boolean | null
-          clinician_id: string
+          assessment_id: string
+          average_fixation_duration: number | null
           created_at: string
-          file_path: string
-          graphic_inconsistency: number | null
+          fixation_points: Json | null
           id: string
-          letter_crowding: number | null
-          line_adherence: number | null
-          recognized_text: string | null
-          reversal_count: number | null
-          student_id: string
+          reading_speed_wpm: number | null
+          regression_count: number | null
+          saccade_patterns: Json | null
         }
         Insert: {
-          analysis_complete?: boolean | null
-          clinician_id: string
+          assessment_id: string
+          average_fixation_duration?: number | null
           created_at?: string
-          file_path: string
-          graphic_inconsistency?: number | null
+          fixation_points?: Json | null
           id?: string
-          letter_crowding?: number | null
-          line_adherence?: number | null
-          recognized_text?: string | null
-          reversal_count?: number | null
-          student_id: string
+          reading_speed_wpm?: number | null
+          regression_count?: number | null
+          saccade_patterns?: Json | null
         }
         Update: {
-          analysis_complete?: boolean | null
-          clinician_id?: string
+          assessment_id?: string
+          average_fixation_duration?: number | null
           created_at?: string
-          file_path?: string
-          graphic_inconsistency?: number | null
+          fixation_points?: Json | null
           id?: string
-          letter_crowding?: number | null
-          line_adherence?: number | null
-          recognized_text?: string | null
-          reversal_count?: number | null
-          student_id?: string
+          reading_speed_wpm?: number | null
+          regression_count?: number | null
+          saccade_patterns?: Json | null
         }
         Relationships: [
           {
-            foreignKeyName: "handwriting_samples_student_id_fkey"
+            foreignKeyName: "eye_tracking_data_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interventions: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          effectiveness_rating: number | null
+          end_date: string | null
+          id: string
+          intervention_type: string
+          notes: string | null
+          start_date: string | null
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          effectiveness_rating?: number | null
+          end_date?: string | null
+          id?: string
+          intervention_type: string
+          notes?: string | null
+          start_date?: string | null
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          effectiveness_rating?: number | null
+          end_date?: string | null
+          id?: string
+          intervention_type?: string
+          notes?: string | null
+          start_date?: string | null
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interventions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interventions_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "students"
@@ -182,67 +209,99 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           created_at: string
-          display_name: string | null
+          email: string | null
+          full_name: string | null
           id: string
           organization: string | null
-          title: string | null
           updated_at: string
-          user_id: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
-          display_name?: string | null
-          id?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
           organization?: string | null
-          title?: string | null
           updated_at?: string
-          user_id: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
-          display_name?: string | null
+          email?: string | null
+          full_name?: string | null
           id?: string
           organization?: string | null
-          title?: string | null
           updated_at?: string
-          user_id?: string
         }
         Relationships: []
       }
       students: {
         Row: {
-          age: number
-          clinician_id: string
           created_at: string
-          grade: string
+          created_by: string
+          date_of_birth: string | null
+          first_name: string
+          grade_level: string | null
           id: string
-          name: string
+          last_name: string
           notes: string | null
-          risk_level: string | null
+          school: string | null
           updated_at: string
         }
         Insert: {
-          age: number
-          clinician_id: string
           created_at?: string
-          grade: string
+          created_by: string
+          date_of_birth?: string | null
+          first_name: string
+          grade_level?: string | null
           id?: string
-          name: string
+          last_name: string
           notes?: string | null
-          risk_level?: string | null
+          school?: string | null
           updated_at?: string
         }
         Update: {
-          age?: number
-          clinician_id?: string
           created_at?: string
-          grade?: string
+          created_by?: string
+          date_of_birth?: string | null
+          first_name?: string
+          grade_level?: string | null
           id?: string
-          name?: string
+          last_name?: string
           notes?: string | null
-          risk_level?: string | null
+          school?: string | null
           updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
         }
         Relationships: []
       }
@@ -251,10 +310,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "educator" | "clinician" | "parent"
+      assessment_status: "pending" | "in_progress" | "completed" | "cancelled"
+      assessment_type: "reading" | "phonological" | "visual" | "comprehensive"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -381,6 +448,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "educator", "clinician", "parent"],
+      assessment_status: ["pending", "in_progress", "completed", "cancelled"],
+      assessment_type: ["reading", "phonological", "visual", "comprehensive"],
+    },
   },
 } as const
