@@ -4,6 +4,7 @@ import { useSpeechRecognition } from './useSpeechRecognition';
 import { useCognitiveLoad } from './useCognitiveLoad';
 import { useHandwritingAnalysis } from './useHandwritingAnalysis';
 import { useDiagnosticEngine } from './useDiagnosticEngine';
+import logger from '@/lib/logger';
 import type { 
   DiagnosticResult, 
   EyeTrackingMetrics, 
@@ -174,7 +175,7 @@ export function useAssessmentController(options: UseAssessmentControllerOptions 
           eyeTracking.saccades
         );
       } catch (error) {
-        console.error('Failed to save diagnostic result:', error);
+        logger.error('Failed to save diagnostic result', error);
       }
     }
     

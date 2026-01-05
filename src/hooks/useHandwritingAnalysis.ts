@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import Tesseract from 'tesseract.js';
 import type { HandwritingMetrics } from '@/types/diagnostic';
+import logger from '@/lib/logger';
 
 interface CharacterAnalysis {
   reversals: { char: string; position: number; context: string }[];
@@ -57,7 +58,7 @@ export function useHandwritingAnalysis() {
       setIsAnalyzing(false);
       return metrics;
     } catch (error) {
-      console.error('Handwriting analysis failed:', error);
+      logger.error('Handwriting analysis failed', error);
       setIsAnalyzing(false);
       throw error;
     }

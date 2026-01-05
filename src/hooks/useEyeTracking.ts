@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { GazePoint, Fixation, Saccade, EyeTrackingMetrics } from '@/types/diagnostic';
-
-declare global {
-  interface Window {
-    webgazer: any;
-  }
-}
+import webgazer from 'webgazer';
 
 export function useEyeTracking() {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -18,57 +13,40 @@ export function useEyeTracking() {
   
   const lastGazeRef = useRef<GazePoint | null>(null);
   const fixationStartRef = useRef<{ x: number; y: number; timestamp: number } | null>(null);
-  const webgazerLoadedRef = useRef(false);
+  const webgazerInitializedRef = useRef(false);
   const gazeBufferRef = useRef<{ x: number; y: number }[]>([]); // 5-frame moving average buffer
 
   const FIXATION_THRESHOLD = 50; // pixels
   const FIXATION_MIN_DURATION = 100; // ms
   const SMOOTHING_WINDOW = 5; // frames for moving average
 
-  const loadWebGazer = useCallback(async () => {
-    if (webgazerLoadedRef.current) return;
-    
-    return new Promise<void>((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://webgazer.cs.brown.edu/webgazer.js';
-      script.async = true;
-      script.onload = () => {
-        webgazerLoadedRef.current = true;
-        resolve();
-      };
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-  }, []);
-
   const initialize = useCallback(async () => {
+    if (webgazerInitializedRef.current) return;
+    
     try {
-      await loadWebGazer();
-      
-      if (window.webgazer) {
-        await window.webgazer
-          .setGazeListener((data: any, timestamp: number) => {
-            if (data && typeof data.x === 'number' && typeof data.y === 'number') {
-              // Apply 5-frame moving average filter for gaze smoothing
-              gazeBufferRef.current.push({ x: data.x, y: data.y });
-              if (gazeBufferRef.current.length > SMOOTHING_WINDOW) {
-                gazeBufferRef.current.shift();
-              }
-              
-              const bufferLength = gazeBufferRef.current.length;
-              if (bufferLength === 0) return;
-              
-              const smoothedX = gazeBufferRef.current.reduce((sum, p) => sum + p.x, 0) / bufferLength;
-              const smoothedY = gazeBufferRef.current.reduce((sum, p) => sum + p.y, 0) / bufferLength;
-              
-              const point: GazePoint = {
-                x: smoothedX,
-                y: smoothedY,
-                timestamp
-              };
-              
-              setCurrentGaze({ x: smoothedX, y: smoothedY });
-              setGazeData(prev => [...prev.slice(-500), point]);
+      await webgazer
+        .setGazeListener((data: { x: number; y: number } | null, timestamp: number) => {
+          if (data && typeof data.x === 'number' && typeof data.y === 'number') {
+            // Apply 5-frame moving average filter for gaze smoothing
+            gazeBufferRef.current.push({ x: data.x, y: data.y });
+            if (gazeBufferRef.current.length > SMOOTHING_WINDOW) {
+              gazeBufferRef.current.shift();
+            }
+            
+            const bufferLength = gazeBufferRef.current.length;
+            if (bufferLength === 0) return;
+            
+            const smoothedX = gazeBufferRef.current.reduce((sum, p) => sum + p.x, 0) / bufferLength;
+            const smoothedY = gazeBufferRef.current.reduce((sum, p) => sum + p.y, 0) / bufferLength;
+            
+            const point: GazePoint = {
+              x: smoothedX,
+              y: smoothedY,
+              timestamp
+            };
+            
+            setCurrentGaze({ x: smoothedX, y: smoothedY });
+            setGazeData(prev => [...prev.slice(-500), point]);
               
               // Detect fixations
               const lastGaze = lastGazeRef.current;
@@ -110,32 +88,32 @@ export function useEyeTracking() {
                 }
               }
               
-              lastGazeRef.current = point;
-            }
-          })
-          .begin();
-        
-        window.webgazer.showVideoPreview(false);
-        window.webgazer.showPredictionPoints(false);
-        
-        setIsInitialized(true);
-        setIsTracking(true);
-      }
+            lastGazeRef.current = point;
+          }
+        })
+        .begin();
+      
+      webgazer.showVideoPreview(false);
+      webgazer.showPredictionPoints(false);
+      
+      webgazerInitializedRef.current = true;
+      setIsInitialized(true);
+      setIsTracking(true);
     } catch {
       // Failed to initialize eye tracking - will fall back to manual input
     }
-  }, [loadWebGazer]);
+  }, []);
 
   const stop = useCallback(() => {
-    if (window.webgazer) {
-      window.webgazer.pause();
+    if (webgazerInitializedRef.current) {
+      webgazer.pause();
       setIsTracking(false);
     }
   }, []);
 
   const resume = useCallback(() => {
-    if (window.webgazer && isInitialized) {
-      window.webgazer.resume();
+    if (webgazerInitializedRef.current && isInitialized) {
+      webgazer.resume();
       setIsTracking(true);
     }
   }, [isInitialized]);
@@ -204,8 +182,9 @@ export function useEyeTracking() {
 
   useEffect(() => {
     return () => {
-      if (window.webgazer) {
-        window.webgazer.end();
+      if (webgazerInitializedRef.current) {
+        webgazer.end();
+        webgazerInitializedRef.current = false;
       }
     };
   }, []);
