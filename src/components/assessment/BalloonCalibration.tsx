@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { X, Target } from 'lucide-react';
+import { Target } from 'lucide-react';
 
 interface BalloonCalibrationProps {
   onComplete: () => void;
-  onSkip: () => void;
+  onSkip?: () => void;
 }
 
 interface CalibrationPoint {
@@ -111,9 +111,6 @@ export function BalloonCalibration({ onComplete, onSkip }: BalloonCalibrationPro
           <span className="text-sm text-muted-foreground">
             {points.filter(p => p.completed).length}/{points.length}
           </span>
-          <Button variant="ghost" size="icon" onClick={onSkip}>
-            <X className="w-5 h-5" />
-          </Button>
         </div>
       </div>
 
@@ -242,12 +239,6 @@ export function BalloonCalibration({ onComplete, onSkip }: BalloonCalibrationPro
         ))}
       </div>
 
-      {/* Skip button */}
-      <div className="absolute bottom-4 right-4">
-        <Button variant="outline" onClick={onSkip}>
-          Skip Calibration
-        </Button>
-      </div>
     </motion.div>
   );
 }

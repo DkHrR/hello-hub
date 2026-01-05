@@ -17,7 +17,6 @@ import {
 
 interface BiometricPreCheckProps {
   onReady: (videoElement: HTMLVideoElement) => void;
-  onSkip?: () => void;
 }
 
 interface CheckStatus {
@@ -27,7 +26,7 @@ interface CheckStatus {
   faceDistance: 'pending' | 'checking' | 'pass' | 'fail';
 }
 
-export function BiometricPreCheck({ onReady, onSkip }: BiometricPreCheckProps) {
+export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
@@ -385,12 +384,6 @@ export function BiometricPreCheck({ onReady, onSkip }: BiometricPreCheckProps) {
                     </>
                   )}
                 </Button>
-                
-                {onSkip && (
-                  <Button variant="ghost" className="w-full" onClick={onSkip}>
-                    Skip Pre-Check (Not Recommended)
-                  </Button>
-                )}
               </div>
             </div>
           </div>

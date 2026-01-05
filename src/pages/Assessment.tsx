@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,9 @@ import { AdaptiveReadingContainer } from '@/components/reading/AdaptiveReadingCo
 import { DiagnosticResults } from '@/components/dashboard/DiagnosticResults';
 import { PDFReportGenerator } from '@/components/reports/PDFReportGenerator';
 import { HandwritingUpload } from '@/components/handwriting/HandwritingUpload';
+import { StudentIntakeModal, StudentIntakeData } from '@/components/assessment/StudentIntakeModal';
 import { useAssessmentController } from '@/hooks/useAssessmentController';
+import { getPassageForGrade } from '@/data/readingPassages';
 import { 
   Eye, 
   Mic, 
@@ -36,31 +38,73 @@ import {
   Shield
 } from 'lucide-react';
 
-const sampleText = `The quick brown fox jumps over the lazy dog. This pangram contains every letter of the English alphabet. Reading fluently requires practice and patience. The brain processes words through multiple pathways, including the visual cortex and language centers. Dyslexia affects how these pathways connect, making reading more challenging but not impossible.`;
-
 export default function AssessmentPage() {
-  const [searchParams] = useSearchParams();
-  const studentId = searchParams.get('studentId') || undefined;
-  const studentName = searchParams.get('name') || 'Student';
-  const studentAge = parseInt(searchParams.get('age') || '10');
-  const studentGrade = searchParams.get('grade') || '4th Grade';
+  const navigate = useNavigate();
+  
+  // Student intake state
+  const [showIntakeModal, setShowIntakeModal] = useState(false);
+  const [studentData, setStudentData] = useState<StudentIntakeData | null>(null);
+  
+  // Get grade-appropriate reading passage
+  const readingPassage = studentData 
+    ? getPassageForGrade(studentData.grade) 
+    : getPassageForGrade('2nd-3rd Grade');
   
   const containerRef = useRef<HTMLDivElement>(null);
   const gazeHeatmapRef = useRef<HTMLCanvasElement>(null);
-  const [showGazeViz, setShowGazeViz] = useState(false); // Ghost mode: hidden by default
+  const [showGazeViz, setShowGazeViz] = useState(false);
   const [showBalloonCalibration, setShowBalloonCalibration] = useState(false);
   const [showBiometricPreCheck, setShowBiometricPreCheck] = useState(false);
   const [biometricPassed, setBiometricPassed] = useState(false);
   
+  // Reading completion gate state
+  const [readingStartTime, setReadingStartTime] = useState<number | null>(null);
+  const [readingElapsed, setReadingElapsed] = useState(0);
+  const MINIMUM_READING_SECONDS = 30;
+  const MINIMUM_FIXATIONS = 10;
+  
   const controller = useAssessmentController({
-    studentId,
-    studentName,
-    studentAge,
-    studentGrade
+    studentId: undefined,
+    studentName: studentData?.name || 'Student',
+    studentAge: studentData?.age || 10,
+    studentGrade: studentData?.grade || '4th Grade'
   });
 
-  // Show biometric pre-check first, then calibration
-  const handleStartAssessment = useCallback(() => {
+  // Track reading time for completion gate
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (controller.step === 'reading' && readingStartTime) {
+      interval = setInterval(() => {
+        setReadingElapsed(Math.floor((Date.now() - readingStartTime) / 1000));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [controller.step, readingStartTime]);
+
+  // Set reading start time when entering reading step
+  useEffect(() => {
+    if (controller.step === 'reading' && !readingStartTime) {
+      setReadingStartTime(Date.now());
+    }
+  }, [controller.step, readingStartTime]);
+
+  // Check if reading requirements are met
+  const readingRequirementsMet = 
+    readingElapsed >= MINIMUM_READING_SECONDS && 
+    controller.eyeTracking.fixations.length >= MINIMUM_FIXATIONS;
+
+  // Check if voice requirements are met (at least 50 characters of transcript)
+  const voiceRequirementsMet = controller.speechRecognition.transcript.length >= 50;
+
+  // Show intake modal when Begin Assessment is clicked
+  const handleBeginClick = useCallback(() => {
+    setShowIntakeModal(true);
+  }, []);
+
+  // Handle student intake submission
+  const handleIntakeSubmit = useCallback((data: StudentIntakeData) => {
+    setStudentData(data);
+    setShowIntakeModal(false);
     setShowBiometricPreCheck(true);
   }, []);
 
@@ -74,11 +118,6 @@ export default function AssessmentPage() {
   const handleCalibrationComplete = useCallback(async () => {
     setShowBalloonCalibration(false);
     await controller.handleCalibrationComplete();
-  }, [controller]);
-
-  const handleSkipCalibration = useCallback(async () => {
-    setShowBalloonCalibration(false);
-    await controller.handleSkipCalibration();
   }, [controller]);
 
   const steps = ['intro', 'calibration', 'reading', 'voice', 'handwriting', 'processing', 'results'];
@@ -182,7 +221,7 @@ export default function AssessmentPage() {
                 <Button 
                   variant="hero" 
                   size="xl" 
-                  onClick={handleStartAssessment}
+                  onClick={handleBeginClick}
                   disabled={biometricPassed}
                 >
                   Begin Assessment
@@ -248,6 +287,14 @@ export default function AssessmentPage() {
                         Read the following text at your normal pace.
                       </p>
                       {/* Clean reading container - no visible gaze indicators */}
+                      {/* Student info banner */}
+                      {studentData && (
+                        <div className="mb-4 p-3 rounded-lg bg-muted/50 text-sm flex items-center justify-between">
+                          <span>Student: <strong>{studentData.name}</strong> | Grade: {studentData.grade} | Age: {studentData.age}</span>
+                          <span className="text-muted-foreground">{readingPassage.wordCount} words</span>
+                        </div>
+                      )}
+                      
                       <AdaptiveReadingContainer
                         eyeTrackingChaos={controller.eyeTracking.getMetrics().chaosIndex}
                         fixationDuration={controller.eyeTracking.getMetrics().averageFixationDuration}
@@ -255,7 +302,7 @@ export default function AssessmentPage() {
                         className="rounded-xl"
                       >
                         <AdaptiveTextDisplay
-                          text={sampleText}
+                          text={readingPassage.text}
                           gazePosition={controller.eyeTracking.currentGaze}
                         />
                       </AdaptiveReadingContainer>
@@ -274,10 +321,35 @@ export default function AssessmentPage() {
                         {showGazeViz ? 'Hide' : 'Show'} Debug View
                       </Button>
                     </div>
-                    <Button variant="hero" onClick={controller.startVoiceTest}>
-                      Continue to Voice Test
-                      <ArrowRight className="w-5 h-5" />
-                    </Button>
+                    <div className="flex items-center gap-4">
+                      {/* Reading completion progress */}
+                      <div className="text-sm text-muted-foreground">
+                        <span className={readingElapsed >= MINIMUM_READING_SECONDS ? 'text-success' : ''}>
+                          {readingElapsed}s / {MINIMUM_READING_SECONDS}s
+                        </span>
+                        {' | '}
+                        <span className={controller.eyeTracking.fixations.length >= MINIMUM_FIXATIONS ? 'text-success' : ''}>
+                          {controller.eyeTracking.fixations.length} / {MINIMUM_FIXATIONS} fixations
+                        </span>
+                      </div>
+                      <Button 
+                        variant="hero" 
+                        onClick={controller.startVoiceTest}
+                        disabled={!readingRequirementsMet}
+                      >
+                        {readingRequirementsMet ? (
+                          <>
+                            Continue to Voice Test
+                            <ArrowRight className="w-5 h-5" />
+                          </>
+                        ) : (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Complete Reading First
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -331,7 +403,7 @@ export default function AssessmentPage() {
                     </p>
                     
                     <div className="p-6 rounded-xl bg-muted/50 mb-6">
-                      <p className="text-xl leading-relaxed">{sampleText}</p>
+                      <p className="text-xl leading-relaxed">{readingPassage.text}</p>
                     </div>
 
                     {/* Transcript display */}
@@ -386,9 +458,22 @@ export default function AssessmentPage() {
                     <PenTool className="w-4 h-4" />
                     Add Handwriting Sample
                   </Button>
-                  <Button variant="hero" onClick={controller.finishAssessment}>
-                    Complete Assessment
-                    <CheckCircle className="w-5 h-5" />
+                  <Button 
+                    variant="hero" 
+                    onClick={controller.finishAssessment}
+                    disabled={!voiceRequirementsMet}
+                  >
+                    {voiceRequirementsMet ? (
+                      <>
+                        Complete Assessment
+                        <CheckCircle className="w-5 h-5" />
+                      </>
+                    ) : (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Record Voice First ({controller.speechRecognition.transcript.length}/50 chars)
+                      </>
+                    )}
                   </Button>
                 </div>
               </motion.div>
@@ -499,9 +584,9 @@ export default function AssessmentPage() {
                 {/* PDF Report Generator */}
                 <div className="mt-8">
                   <PDFReportGenerator
-                    studentName={studentName}
-                    studentAge={studentAge}
-                    studentGrade={studentGrade}
+                    studentName={studentData?.name || 'Student'}
+                    studentAge={studentData?.age || 10}
+                    studentGrade={studentData?.grade || '4th Grade'}
                     eyeMetrics={controller.eyeMetrics}
                     voiceMetrics={controller.voiceMetrics}
                     handwritingMetrics={controller.handwritingMetrics}
@@ -525,22 +610,27 @@ export default function AssessmentPage() {
         </div>
       </main>
 
-      {/* Biometric Pre-Check Overlay */}
+      {/* Student Intake Modal */}
+      <StudentIntakeModal
+        isOpen={showIntakeModal}
+        onClose={() => setShowIntakeModal(false)}
+        onSubmit={handleIntakeSubmit}
+      />
+
+      {/* Biometric Pre-Check Overlay - No skip option */}
       <AnimatePresence>
         {showBiometricPreCheck && (
           <BiometricPreCheck
             onReady={handleBiometricPass}
-            onSkip={() => setShowBiometricPreCheck(false)}
           />
         )}
       </AnimatePresence>
 
-      {/* Balloon Calibration Overlay */}
+      {/* Balloon Calibration Overlay - No skip option */}
       <AnimatePresence>
         {showBalloonCalibration && (
           <BalloonCalibration
             onComplete={handleCalibrationComplete}
-            onSkip={handleSkipCalibration}
           />
         )}
       </AnimatePresence>

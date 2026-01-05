@@ -40,8 +40,8 @@ export interface ETDD70Score {
 
 // ETDD70 Universal Dataset Thresholds
 const ETDD70_THRESHOLDS = {
-  // Fixation duration threshold (ms) - dyslexic readers typically exceed 250ms
-  FIXATION_DURATION_THRESHOLD: 250,
+  // Fixation duration threshold (ms) - clinical standard is 330ms for dyslexia indicators
+  FIXATION_DURATION_THRESHOLD: 330,
   
   // Prolonged fixation threshold (ms)
   PROLONGED_FIXATION_THRESHOLD: 400,
