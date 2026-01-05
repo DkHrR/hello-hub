@@ -47,7 +47,7 @@ export default function AuthPage() {
         setPendingUser({
           id: user.id,
           email: user.email || '',
-          name: profile?.display_name || user.user_metadata?.full_name || user.user_metadata?.name || ''
+          name: profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || ''
         });
         setShowRoleSelection(true);
       }
@@ -98,7 +98,7 @@ export default function AuthPage() {
       .update({ 
         organization: roleDisplayMap[role]
       })
-      .eq('user_id', pendingUser.id);
+      .eq('id', pendingUser.id);
     
     setIsSubmitting(false);
     

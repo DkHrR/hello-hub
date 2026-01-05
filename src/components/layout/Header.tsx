@@ -70,7 +70,7 @@ export function Header() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-2">
                     <User className="w-4 h-4" />
-                    {profile?.display_name || user.email?.split('@')[0] || 'Account'}
+                    {profile?.full_name || user.email?.split('@')[0] || 'Account'}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">

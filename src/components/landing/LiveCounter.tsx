@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, useSpring, useTransform } from 'framer-motion';
+import { motion, useSpring } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { Eye, TrendingUp } from 'lucide-react';
 
@@ -18,9 +18,9 @@ export function LiveCounter({ className = '' }: LiveCounterProps) {
   useEffect(() => {
     const fetchCount = async () => {
       try {
-        // Query diagnostic_results table (the actual table in the database)
+        // Query assessment_results table
         const { count: totalCount, error } = await supabase
-          .from('diagnostic_results')
+          .from('assessment_results')
           .select('*', { count: 'exact', head: true });
         
         if (!error && totalCount !== null) {
@@ -44,7 +44,7 @@ export function LiveCounter({ className = '' }: LiveCounterProps) {
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'diagnostic_results'
+          table: 'assessment_results'
         },
         () => {
           setCount(prev => prev + 1);
