@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, GraduationCap, Calendar, ArrowRight, X } from 'lucide-react';
+import { User, GraduationCap, Calendar, ArrowRight, X, Languages } from 'lucide-react';
+import { availableLanguages } from '@/data/regionalPassages';
 
 interface StudentIntakeModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ export interface StudentIntakeData {
   name: string;
   age: number;
   grade: string;
+  language?: string;
 }
 
 const GRADES = [
@@ -34,6 +36,7 @@ export function StudentIntakeModal({ isOpen, onClose, onSubmit }: StudentIntakeM
   const [name, setName] = useState('');
   const [age, setAge] = useState<number | undefined>();
   const [grade, setGrade] = useState<string | undefined>();
+  const [language, setLanguage] = useState<string>('en');
   const [errors, setErrors] = useState<{ name?: string; age?: string; grade?: string }>({});
 
   const validate = () => {
@@ -61,7 +64,7 @@ export function StudentIntakeModal({ isOpen, onClose, onSubmit }: StudentIntakeM
     e.preventDefault();
     
     if (validate() && age && grade) {
-      onSubmit({ name: name.trim(), age, grade });
+      onSubmit({ name: name.trim(), age, grade, language });
     }
   };
 
@@ -69,6 +72,7 @@ export function StudentIntakeModal({ isOpen, onClose, onSubmit }: StudentIntakeM
     setName('');
     setAge(undefined);
     setGrade(undefined);
+    setLanguage('en');
     setErrors({});
     onClose();
   };
@@ -174,6 +178,29 @@ export function StudentIntakeModal({ isOpen, onClose, onSubmit }: StudentIntakeM
                     {errors.grade && (
                       <p className="text-sm text-destructive">{errors.grade}</p>
                     )}
+                  </div>
+                  
+                  {/* Language Select */}
+                  <div className="space-y-2">
+                    <Label htmlFor="student-language" className="flex items-center gap-2">
+                      <Languages className="w-4 h-4" />
+                      Assessment Language
+                    </Label>
+                    <Select value={language} onValueChange={setLanguage}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableLanguages.map(lang => (
+                          <SelectItem key={lang.code} value={lang.code}>
+                            {lang.nativeName} ({lang.name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Reading passages will be in the selected language
+                    </p>
                   </div>
                   
                   <div className="pt-4">

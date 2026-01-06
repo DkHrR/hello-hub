@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
@@ -18,8 +18,13 @@ import { DiagnosticResults } from '@/components/dashboard/DiagnosticResults';
 import { PDFReportGenerator } from '@/components/reports/PDFReportGenerator';
 import { HandwritingUpload } from '@/components/handwriting/HandwritingUpload';
 import { StudentIntakeModal, StudentIntakeData } from '@/components/assessment/StudentIntakeModal';
+import { SessionRecoveryModal } from '@/components/session/SessionRecoveryModal';
+import { BrowserCompatibilityAlert } from '@/components/alerts/BrowserCompatibilityAlert';
 import { useAssessmentController } from '@/hooks/useAssessmentController';
+import { useSessionPersistence } from '@/hooks/useSessionPersistence';
+import { useRealTimeNotifications } from '@/hooks/useRealTimeNotifications';
 import { getPassageForGrade } from '@/data/readingPassages';
+import { getRegionalPassageForGrade, availableLanguages, getSpeechLocale } from '@/data/regionalPassages';
 import { 
   Eye, 
   Mic, 
@@ -40,14 +45,24 @@ import {
 
 export default function AssessmentPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  // Get studentId from URL if present
+  const urlStudentId = searchParams.get('studentId');
   
   // Student intake state
   const [showIntakeModal, setShowIntakeModal] = useState(false);
-  const [studentData, setStudentData] = useState<StudentIntakeData | null>(null);
+  const [studentData, setStudentData] = useState<StudentIntakeData & { language?: string } | null>(null);
   
-  // Get grade-appropriate reading passage
+  // Session persistence
+  const sessionPersistence = useSessionPersistence();
+  const { notifyAssessmentComplete } = useRealTimeNotifications();
+  
+  // Get grade-appropriate reading passage based on language
   const readingPassage = studentData 
-    ? getPassageForGrade(studentData.grade) 
+    ? studentData.language && studentData.language !== 'en'
+      ? getRegionalPassageForGrade(studentData.language as 'hi' | 'ta' | 'te', studentData.grade)
+      : getPassageForGrade(studentData.grade) 
     : getPassageForGrade('2nd-3rd Grade');
   
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,10 +79,19 @@ export default function AssessmentPage() {
   const MINIMUM_FIXATIONS = 10;
   
   const controller = useAssessmentController({
-    studentId: undefined,
+    studentId: urlStudentId || undefined,
     studentName: studentData?.name || 'Student',
     studentAge: studentData?.age || 10,
-    studentGrade: studentData?.grade || '4th Grade'
+    studentGrade: studentData?.grade || '4th Grade',
+    onComplete: (result) => {
+      // Notify via real-time notifications
+      notifyAssessmentComplete({
+        overallRisk: result.overallRiskLevel === 'high' ? 0.8 : result.overallRiskLevel === 'moderate' ? 0.5 : 0.2,
+        fluencyScore: result.voice?.wordsPerMinute || 0
+      });
+      // Clear session on completion
+      sessionPersistence.clearSession();
+    }
   });
 
   // Track reading time for completion gate
@@ -88,6 +112,20 @@ export default function AssessmentPage() {
     }
   }, [controller.step, readingStartTime]);
 
+  // Auto-save during assessment
+  useEffect(() => {
+    if (controller.step === 'reading' || controller.step === 'voice') {
+      sessionPersistence.startAutoSave(() => ({
+        step: controller.step,
+        transcript: controller.speechRecognition.transcript,
+        fixations: controller.eyeTracking.fixations,
+        saccades: controller.eyeTracking.saccades,
+        readingElapsed
+      }));
+    }
+    return () => sessionPersistence.stopAutoSave();
+  }, [controller.step, readingElapsed]);
+
   // Check if reading requirements are met
   const readingRequirementsMet = 
     readingElapsed >= MINIMUM_READING_SECONDS && 
@@ -102,11 +140,20 @@ export default function AssessmentPage() {
   }, []);
 
   // Handle student intake submission
-  const handleIntakeSubmit = useCallback((data: StudentIntakeData) => {
+  const handleIntakeSubmit = useCallback((data: StudentIntakeData & { language?: string }) => {
     setStudentData(data);
     setShowIntakeModal(false);
+    
+    // Create session for persistence
+    sessionPersistence.createSession({
+      studentId: urlStudentId,
+      studentName: data.name,
+      studentAge: data.age,
+      studentGrade: data.grade
+    });
+    
     setShowBiometricPreCheck(true);
-  }, []);
+  }, [urlStudentId, sessionPersistence]);
 
   const handleBiometricPass = useCallback((_videoElement: HTMLVideoElement) => {
     setShowBiometricPreCheck(false);
@@ -120,6 +167,21 @@ export default function AssessmentPage() {
     await controller.handleCalibrationComplete();
   }, [controller]);
 
+  // Handle session recovery
+  const handleRecoverSession = useCallback(() => {
+    const session = sessionPersistence.recoverSession();
+    if (session) {
+      setStudentData({
+        name: session.studentName,
+        age: session.studentAge,
+        grade: session.studentGrade
+      });
+      setReadingElapsed(session.readingElapsed);
+      // Resume from saved step
+      controller.startAssessment();
+    }
+  }, [sessionPersistence, controller]);
+
   const steps = ['intro', 'calibration', 'reading', 'voice', 'handwriting', 'processing', 'results'];
   const currentStepIndex = steps.indexOf(controller.step);
 
@@ -129,6 +191,23 @@ export default function AssessmentPage() {
       
       <main className="pt-24 pb-16">
         <div className="container">
+          {/* Browser Compatibility Alerts */}
+          <BrowserCompatibilityAlert feature="speech" />
+          <BrowserCompatibilityAlert feature="camera" />
+          
+          {/* Session Recovery Modal */}
+          <SessionRecoveryModal
+            isOpen={sessionPersistence.hasRecoverableSession}
+            onRecover={handleRecoverSession}
+            onDiscard={sessionPersistence.discardRecoveredSession}
+            sessionData={sessionPersistence.recoveredSession ? {
+              studentName: sessionPersistence.recoveredSession.studentName,
+              step: sessionPersistence.recoveredSession.step,
+              lastSavedAt: sessionPersistence.recoveredSession.lastSavedAt,
+              readingElapsed: sessionPersistence.recoveredSession.readingElapsed
+            } : null}
+          />
+          
           {/* Progress indicator */}
           <div className="mb-8">
             <div className="flex items-center justify-center gap-2 mb-4">
@@ -210,10 +289,13 @@ export default function AssessmentPage() {
                   ))}
                 </div>
 
-                {/* India-centric notice */}
+                {/* Language support notice */}
                 <div className="p-4 rounded-lg bg-muted/50 border border-border mb-8 text-sm text-muted-foreground">
+                  <p className="mb-2">
+                    <strong>Regional Language Support:</strong> Assessment available in {availableLanguages.map(l => l.nativeName).join(', ')}
+                  </p>
                   <p>
-                    This assessment uses ETDD70 Universal Dataset thresholds, calibrated for clinical 
+                    Using ETDD70 Universal Dataset thresholds, calibrated for clinical 
                     standards comparable to IIT Madras research protocols.
                   </p>
                 </div>
@@ -275,6 +357,11 @@ export default function AssessmentPage() {
                       <CardTitle className="flex items-center gap-2">
                         <Eye className="w-5 h-5 text-primary" />
                         Reading Assessment
+                        {studentData?.language && studentData.language !== 'en' && (
+                          <span className="ml-2 text-sm font-normal text-muted-foreground">
+                            ({availableLanguages.find(l => l.code === studentData.language)?.nativeName})
+                          </span>
+                        )}
                         {/* Ghost indicator - tracking is active but hidden */}
                         <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
                           <div className={`w-2 h-2 rounded-full ${controller.eyeTracking.isTracking ? 'bg-success animate-pulse' : 'bg-muted'}`} />

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { StudentProgressChart } from '@/components/dashboard/StudentProgressChar
 import { GazeHeatmapReport } from '@/components/dashboard/GazeHeatmapReport';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDashboardData } from '@/hooks/useDashboardData';
+import { useRealTimeNotifications } from '@/hooks/useRealTimeNotifications';
 import { 
   BarChart, 
   Bar, 
@@ -46,12 +47,22 @@ import {
 export default function DashboardPage() {
   const { user, loading: authLoading, profile } = useAuth();
   const navigate = useNavigate();
-  const { students, stats, riskDistribution, isLoading, error } = useDashboardData();
+  const [searchParams] = useSearchParams();
+  const { students, stats, riskDistribution, isLoading, error, refetch } = useDashboardData();
+  
+  // Real-time notifications - will auto-trigger toasts on new results
+  useRealTimeNotifications();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
+
+  // Handle tab from URL
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
 
   const filteredStudents = students.filter(student => {
     const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase());

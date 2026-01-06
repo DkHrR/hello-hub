@@ -234,8 +234,8 @@ export function useFaceMeshPupilTracking() {
       
       const faceMesh = new FaceMesh({
         locateFile: (file: string) => {
-          // Use local node_modules path for bundled files
-          return `/node_modules/@mediapipe/face_mesh/${file}`;
+          // Use CDN for production-safe asset loading
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/${file}`;
         }
       });
       

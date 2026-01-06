@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useEyeTracking } from './useEyeTracking';
+import { useUnifiedEyeTracking } from './useUnifiedEyeTracking';
 import { useSpeechRecognition } from './useSpeechRecognition';
 import { useCognitiveLoad } from './useCognitiveLoad';
 import { useHandwritingAnalysis } from './useHandwritingAnalysis';
@@ -49,8 +49,8 @@ interface UseAssessmentControllerOptions {
 export function useAssessmentController(options: UseAssessmentControllerOptions = {}) {
   const { studentId, onComplete } = options;
   
-  // All the hooks
-  const eyeTracking = useEyeTracking();
+  // All the hooks - using unified MediaPipe eye tracking
+  const eyeTracking = useUnifiedEyeTracking();
   const speechRecognition = useSpeechRecognition();
   const cognitiveLoad = useCognitiveLoad();
   const handwritingAnalysis = useHandwritingAnalysis();
