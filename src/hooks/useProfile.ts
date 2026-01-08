@@ -2,6 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { z } from 'zod';
+
+// Zod schema for profile update validation
+const profileUpdateSchema = z.object({
+  full_name: z.string().trim().max(100, 'Name must be less than 100 characters').optional(),
+  avatar_url: z.string().url('Invalid avatar URL').max(500, 'Avatar URL too long').nullable().optional(),
+  organization: z.string().trim().max(200, 'Organization must be less than 200 characters').nullable().optional(),
+});
 
 // Match the actual database schema for profiles
 export interface Profile {
@@ -68,9 +76,12 @@ export function useProfile() {
     mutationFn: async (updates: ProfileUpdate) => {
       if (!user) throw new Error('Not authenticated');
       
+      // Validate input data
+      const validated = profileUpdateSchema.parse(updates);
+      
       const { data, error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(validated)
         .eq('id', user.id)
         .select()
         .single();
@@ -83,7 +94,11 @@ export function useProfile() {
       toast.success('Profile updated successfully');
     },
     onError: (error) => {
-      toast.error('Failed to update profile: ' + error.message);
+      if (error instanceof z.ZodError) {
+        toast.error('Validation error: ' + error.errors.map(e => e.message).join(', '));
+      } else {
+        toast.error('Failed to update profile: ' + error.message);
+      }
     },
   });
 

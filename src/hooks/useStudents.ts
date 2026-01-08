@@ -2,6 +2,26 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { z } from 'zod';
+
+// Zod schemas for input validation
+const studentInsertSchema = z.object({
+  first_name: z.string().trim().min(1, 'First name is required').max(100, 'First name must be less than 100 characters'),
+  last_name: z.string().trim().min(1, 'Last name is required').max(100, 'Last name must be less than 100 characters'),
+  date_of_birth: z.string().nullable().optional(),
+  grade_level: z.string().max(20, 'Grade level must be less than 20 characters').nullable().optional(),
+  school: z.string().max(200, 'School name must be less than 200 characters').nullable().optional(),
+  notes: z.string().max(2000, 'Notes must be less than 2000 characters').nullable().optional(),
+});
+
+const studentUpdateSchema = z.object({
+  first_name: z.string().trim().min(1, 'First name is required').max(100, 'First name must be less than 100 characters').optional(),
+  last_name: z.string().trim().min(1, 'Last name is required').max(100, 'Last name must be less than 100 characters').optional(),
+  date_of_birth: z.string().nullable().optional(),
+  grade_level: z.string().max(20, 'Grade level must be less than 20 characters').nullable().optional(),
+  school: z.string().max(200, 'School name must be less than 200 characters').nullable().optional(),
+  notes: z.string().max(2000, 'Notes must be less than 2000 characters').nullable().optional(),
+});
 
 // Match the actual database schema for students
 export interface Student {
@@ -57,10 +77,18 @@ export function useStudents() {
     mutationFn: async (student: StudentInsert) => {
       if (!user) throw new Error('Not authenticated');
       
+      // Validate input data
+      const validated = studentInsertSchema.parse(student);
+      
       const { data, error } = await supabase
         .from('students')
         .insert([{
-          ...student,
+          first_name: validated.first_name,
+          last_name: validated.last_name,
+          date_of_birth: validated.date_of_birth ?? null,
+          grade_level: validated.grade_level ?? null,
+          school: validated.school ?? null,
+          notes: validated.notes ?? null,
           created_by: user.id,
         }])
         .select()
@@ -74,15 +102,22 @@ export function useStudents() {
       toast.success('Student added successfully');
     },
     onError: (error) => {
-      toast.error('Failed to add student: ' + error.message);
+      if (error instanceof z.ZodError) {
+        toast.error('Validation error: ' + error.errors.map(e => e.message).join(', '));
+      } else {
+        toast.error('Failed to add student: ' + error.message);
+      }
     },
   });
 
   const updateStudent = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: StudentUpdate }) => {
+      // Validate input data
+      const validated = studentUpdateSchema.parse(updates);
+      
       const { data, error } = await supabase
         .from('students')
-        .update(updates)
+        .update(validated)
         .eq('id', id)
         .select()
         .single();
@@ -95,7 +130,11 @@ export function useStudents() {
       toast.success('Student updated successfully');
     },
     onError: (error) => {
-      toast.error('Failed to update student: ' + error.message);
+      if (error instanceof z.ZodError) {
+        toast.error('Validation error: ' + error.errors.map(e => e.message).join(', '));
+      } else {
+        toast.error('Failed to update student: ' + error.message);
+      }
     },
   });
 

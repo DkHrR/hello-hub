@@ -2,6 +2,27 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { z } from 'zod';
+
+// Zod schemas for assessment input validation
+const assessmentTypeSchema = z.enum(['reading', 'phonological', 'visual', 'comprehensive']);
+
+const createAssessmentSchema = z.object({
+  student_id: z.string().uuid('Invalid student ID'),
+  assessment_type: assessmentTypeSchema.optional().default('comprehensive'),
+});
+
+const scoreSchema = z.number().min(0).max(100).optional();
+
+const assessmentResultsSchema = z.object({
+  overall_risk_score: scoreSchema,
+  reading_fluency_score: scoreSchema,
+  phonological_awareness_score: scoreSchema,
+  visual_processing_score: scoreSchema,
+  attention_score: scoreSchema,
+  recommendations: z.array(z.string().max(500)).max(20).optional(),
+  raw_data: z.record(z.unknown()).optional(),
+});
 
 export interface AssessmentResult {
   id: string;
@@ -67,12 +88,15 @@ export function useAssessments() {
     }) => {
       if (!user) throw new Error('Not authenticated');
 
+      // Validate input data
+      const validated = createAssessmentSchema.parse(input);
+
       const { data, error } = await supabase
         .from('assessments')
         .insert({
-          student_id: input.student_id,
+          student_id: validated.student_id,
           assessor_id: user.id,
-          assessment_type: input.assessment_type || 'comprehensive',
+          assessment_type: validated.assessment_type,
           status: 'pending'
         })
         .select()
@@ -85,7 +109,11 @@ export function useAssessments() {
       queryClient.invalidateQueries({ queryKey: ['assessments'] });
     },
     onError: (error) => {
-      toast.error('Failed to create assessment: ' + error.message);
+      if (error instanceof z.ZodError) {
+        toast.error('Validation error: ' + error.errors.map(e => e.message).join(', '));
+      } else {
+        toast.error('Failed to create assessment: ' + error.message);
+      }
     },
   });
 
@@ -121,6 +149,12 @@ export function useAssessments() {
         raw_data?: any;
       };
     }) => {
+      // Validate assessment ID
+      z.string().uuid('Invalid assessment ID').parse(input.assessmentId);
+      
+      // Validate results
+      const validatedResults = assessmentResultsSchema.parse(input.results);
+      
       // Update assessment status
       const { error: assessmentError } = await supabase
         .from('assessments')
@@ -137,13 +171,13 @@ export function useAssessments() {
         .from('assessment_results')
         .insert([{
           assessment_id: input.assessmentId,
-          overall_risk_score: input.results.overall_risk_score,
-          reading_fluency_score: input.results.reading_fluency_score,
-          phonological_awareness_score: input.results.phonological_awareness_score,
-          visual_processing_score: input.results.visual_processing_score,
-          attention_score: input.results.attention_score,
-          recommendations: input.results.recommendations ? JSON.parse(JSON.stringify(input.results.recommendations)) : null,
-          raw_data: input.results.raw_data ? JSON.parse(JSON.stringify(input.results.raw_data)) : null
+          overall_risk_score: validatedResults.overall_risk_score,
+          reading_fluency_score: validatedResults.reading_fluency_score,
+          phonological_awareness_score: validatedResults.phonological_awareness_score,
+          visual_processing_score: validatedResults.visual_processing_score,
+          attention_score: validatedResults.attention_score,
+          recommendations: validatedResults.recommendations ? JSON.parse(JSON.stringify(validatedResults.recommendations)) : null,
+          raw_data: validatedResults.raw_data ? JSON.parse(JSON.stringify(validatedResults.raw_data)) : null
         }])
         .select()
         .single();
@@ -156,7 +190,11 @@ export function useAssessments() {
       toast.success('Assessment completed and saved');
     },
     onError: (error) => {
-      toast.error('Failed to save assessment: ' + error.message);
+      if (error instanceof z.ZodError) {
+        toast.error('Validation error: ' + error.errors.map(e => e.message).join(', '));
+      } else {
+        toast.error('Failed to save assessment: ' + error.message);
+      }
     },
   });
 
@@ -172,17 +210,31 @@ export function useAssessments() {
       recommendations?: string[];
       raw_data?: any;
     }) => {
+      // Validate assessment ID
+      z.string().uuid('Invalid assessment ID').parse(input.assessment_id);
+      
+      // Validate results data
+      const validatedResults = assessmentResultsSchema.parse({
+        overall_risk_score: input.overall_risk_score,
+        reading_fluency_score: input.reading_fluency_score,
+        phonological_awareness_score: input.phonological_awareness_score,
+        visual_processing_score: input.visual_processing_score,
+        attention_score: input.attention_score,
+        recommendations: input.recommendations,
+        raw_data: input.raw_data,
+      });
+      
       const { data, error } = await supabase
         .from('assessment_results')
         .insert([{
           assessment_id: input.assessment_id,
-          overall_risk_score: input.overall_risk_score,
-          reading_fluency_score: input.reading_fluency_score,
-          phonological_awareness_score: input.phonological_awareness_score,
-          visual_processing_score: input.visual_processing_score,
-          attention_score: input.attention_score,
-          recommendations: input.recommendations ? JSON.parse(JSON.stringify(input.recommendations)) : null,
-          raw_data: input.raw_data ? JSON.parse(JSON.stringify(input.raw_data)) : null
+          overall_risk_score: validatedResults.overall_risk_score,
+          reading_fluency_score: validatedResults.reading_fluency_score,
+          phonological_awareness_score: validatedResults.phonological_awareness_score,
+          visual_processing_score: validatedResults.visual_processing_score,
+          attention_score: validatedResults.attention_score,
+          recommendations: validatedResults.recommendations ? JSON.parse(JSON.stringify(validatedResults.recommendations)) : null,
+          raw_data: validatedResults.raw_data ? JSON.parse(JSON.stringify(validatedResults.raw_data)) : null
         }])
         .select()
         .single();

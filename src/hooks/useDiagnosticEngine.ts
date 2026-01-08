@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { z } from 'zod';
 import type { 
   EyeTrackingMetrics, 
   VoiceMetrics, 
@@ -10,6 +11,51 @@ import type {
   Fixation,
   Saccade
 } from '@/types/diagnostic';
+
+// Zod schemas for diagnostic data validation
+const scoreSchema = z.number().min(0).max(100);
+
+const diagnosticResultValidation = z.object({
+  eyeTracking: z.object({
+    chaosIndex: z.number().min(0).max(1),
+    regressionCount: z.number().min(0),
+    fixationIntersectionCoefficient: z.number().min(0).max(1),
+    prolongedFixations: z.number().min(0),
+    averageFixationDuration: z.number().min(0),
+  }),
+  voice: z.object({
+    fluencyScore: scoreSchema,
+    prosodyScore: scoreSchema.optional(),
+    phonemicErrors: z.number().min(0),
+    wordsPerMinute: z.number().min(0),
+    stallCount: z.number().min(0).optional(),
+  }),
+  handwriting: z.object({
+    reversalCount: z.number().min(0),
+    letterCrowding: z.number().min(0).max(1),
+    graphicInconsistency: z.number().min(0).max(1),
+    lineAdherence: z.number().min(0).max(1),
+  }),
+  cognitiveLoad: z.object({
+    overloadEvents: z.number().min(0),
+    stressIndicators: z.number().min(0),
+  }),
+});
+
+const fixationSchema = z.array(z.object({
+  x: z.number(),
+  y: z.number(),
+  timestamp: z.number(),
+  duration: z.number().optional(),
+})).max(10000); // Limit array size
+
+const saccadeSchema = z.array(z.object({
+  startX: z.number(),
+  startY: z.number(),
+  endX: z.number(),
+  endY: z.number(),
+  duration: z.number().optional(),
+})).max(10000); // Limit array size
 
 interface DiagnosticWeights {
   eyeTracking: number;
@@ -146,12 +192,38 @@ export function useDiagnosticEngine() {
   ) => {
     if (!user) throw new Error('User not authenticated');
 
+    // Validate assessment ID
+    z.string().uuid('Invalid assessment ID').parse(assessmentId);
+    
+    // Validate session ID length
+    z.string().max(50, 'Session ID too long').parse(sessionId);
+    
+    // Validate diagnostic result structure (partial validation for essential fields)
+    const validatedResult = diagnosticResultValidation.safeParse({
+      eyeTracking: result.eyeTracking,
+      voice: result.voice,
+      handwriting: result.handwriting,
+      cognitiveLoad: result.cognitiveLoad,
+    });
+    
+    if (!validatedResult.success) {
+      console.warn('Diagnostic result validation warning:', validatedResult.error.errors);
+      // Continue with original data but log the warning
+    }
+    
+    // Validate and limit fixations/saccades arrays
+    const validatedFixations = fixationSchema.safeParse(fixations);
+    const validatedSaccades = saccadeSchema.safeParse(saccades);
+    
+    const safeFixations = validatedFixations.success ? validatedFixations.data : fixations.slice(0, 10000);
+    const safeSaccades = validatedSaccades.success ? validatedSaccades.data : saccades.slice(0, 10000);
+
     // Calculate scores as percentages for the assessment_results table
-    const overallRiskScore = Math.max(
+    const overallRiskScore = Math.min(1, Math.max(0, Math.max(
       result.dyslexiaProbabilityIndex,
       result.adhdProbabilityIndex,
       result.dysgraphiaProbabilityIndex
-    );
+    )));
 
     // Prepare raw data with all metrics
     const rawData = {
@@ -163,12 +235,15 @@ export function useDiagnosticEngine() {
       dyslexiaProbabilityIndex: result.dyslexiaProbabilityIndex,
       adhdProbabilityIndex: result.adhdProbabilityIndex,
       dysgraphiaProbabilityIndex: result.dysgraphiaProbabilityIndex,
-      fixationCount: fixations.length,
-      saccadeCount: saccades.length
+      fixationCount: safeFixations.length,
+      saccadeCount: safeSaccades.length
     };
 
     // Generate recommendations
     const recommendations = generateRecommendations(result);
+
+    // Validate scores are within bounds
+    const clampScore = (score: number) => Math.min(100, Math.max(0, score));
 
     // Save to assessment_results table
     const { error: resultError } = await supabase
@@ -176,10 +251,10 @@ export function useDiagnosticEngine() {
       .insert([{
         assessment_id: assessmentId,
         overall_risk_score: overallRiskScore,
-        reading_fluency_score: result.voice.fluencyScore,
-        phonological_awareness_score: 100 - (result.voice.phonemicErrors * 10),
-        visual_processing_score: 100 - (result.eyeTracking.chaosIndex * 100),
-        attention_score: 100 - (result.adhdProbabilityIndex * 100),
+        reading_fluency_score: clampScore(result.voice.fluencyScore),
+        phonological_awareness_score: clampScore(100 - (result.voice.phonemicErrors * 10)),
+        visual_processing_score: clampScore(100 - (result.eyeTracking.chaosIndex * 100)),
+        attention_score: clampScore(100 - (result.adhdProbabilityIndex * 100)),
         recommendations: JSON.parse(JSON.stringify(recommendations)),
         raw_data: JSON.parse(JSON.stringify(rawData))
       }]);
@@ -191,11 +266,11 @@ export function useDiagnosticEngine() {
       .from('eye_tracking_data')
       .insert([{
         assessment_id: assessmentId,
-        fixation_points: JSON.parse(JSON.stringify(fixations)),
-        saccade_patterns: JSON.parse(JSON.stringify(saccades)),
-        regression_count: result.eyeTracking.regressionCount,
-        average_fixation_duration: result.eyeTracking.averageFixationDuration,
-        reading_speed_wpm: result.voice.wordsPerMinute
+        fixation_points: JSON.parse(JSON.stringify(safeFixations)),
+        saccade_patterns: JSON.parse(JSON.stringify(safeSaccades)),
+        regression_count: Math.max(0, result.eyeTracking.regressionCount),
+        average_fixation_duration: Math.max(0, result.eyeTracking.averageFixationDuration),
+        reading_speed_wpm: Math.max(0, result.voice.wordsPerMinute)
       }]);
 
     if (eyeError) throw eyeError;
