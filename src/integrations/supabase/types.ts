@@ -16,9 +16,11 @@ export type Database = {
     Tables: {
       assessment_results: {
         Row: {
+          ai_insights: Json | null
           assessment_id: string
           attention_score: number | null
           created_at: string
+          dyslexia_biomarkers: Json | null
           id: string
           overall_risk_score: number | null
           phonological_awareness_score: number | null
@@ -28,9 +30,11 @@ export type Database = {
           visual_processing_score: number | null
         }
         Insert: {
+          ai_insights?: Json | null
           assessment_id: string
           attention_score?: number | null
           created_at?: string
+          dyslexia_biomarkers?: Json | null
           id?: string
           overall_risk_score?: number | null
           phonological_awareness_score?: number | null
@@ -40,9 +44,11 @@ export type Database = {
           visual_processing_score?: number | null
         }
         Update: {
+          ai_insights?: Json | null
           assessment_id?: string
           attention_score?: number | null
           created_at?: string
+          dyslexia_biomarkers?: Json | null
           id?: string
           overall_risk_score?: number | null
           phonological_awareness_score?: number | null
@@ -113,31 +119,43 @@ export type Database = {
         Row: {
           assessment_id: string
           average_fixation_duration: number | null
+          biomarkers: Json | null
           created_at: string
           fixation_points: Json | null
+          glissade_count: number | null
           id: string
+          pso_count: number | null
           reading_speed_wpm: number | null
           regression_count: number | null
+          saccade_count: number | null
           saccade_patterns: Json | null
         }
         Insert: {
           assessment_id: string
           average_fixation_duration?: number | null
+          biomarkers?: Json | null
           created_at?: string
           fixation_points?: Json | null
+          glissade_count?: number | null
           id?: string
+          pso_count?: number | null
           reading_speed_wpm?: number | null
           regression_count?: number | null
+          saccade_count?: number | null
           saccade_patterns?: Json | null
         }
         Update: {
           assessment_id?: string
           average_fixation_duration?: number | null
+          biomarkers?: Json | null
           created_at?: string
           fixation_points?: Json | null
+          glissade_count?: number | null
           id?: string
+          pso_count?: number | null
           reading_speed_wpm?: number | null
           regression_count?: number | null
+          saccade_count?: number | null
           saccade_patterns?: Json | null
         }
         Relationships: [
@@ -200,6 +218,53 @@ export type Database = {
           },
           {
             foreignKeyName: "interventions_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parent_access_tokens: {
+        Row: {
+          access_code: string
+          access_count: number | null
+          created_at: string | null
+          created_by: string
+          expires_at: string
+          id: string
+          included_assessments: string[] | null
+          last_accessed_at: string | null
+          settings: Json | null
+          student_id: string
+        }
+        Insert: {
+          access_code: string
+          access_count?: number | null
+          created_at?: string | null
+          created_by: string
+          expires_at: string
+          id?: string
+          included_assessments?: string[] | null
+          last_accessed_at?: string | null
+          settings?: Json | null
+          student_id: string
+        }
+        Update: {
+          access_code?: string
+          access_count?: number | null
+          created_at?: string | null
+          created_by?: string
+          expires_at?: string
+          id?: string
+          included_assessments?: string[] | null
+          last_accessed_at?: string | null
+          settings?: Json | null
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_access_tokens_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "students"
