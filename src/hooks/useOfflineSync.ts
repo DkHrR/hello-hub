@@ -136,12 +136,9 @@ export function useOfflineSync() {
       try {
         let success = false;
 
-        switch (item.type) {
-          case 'result':
-          case 'assessment_result':
-            success = await syncAssessmentResult(item.data as OfflineResult);
-            break;
-          // Add other sync types as needed
+        // Handle all result-type jobs
+        if (item.type === 'result' || item.type === 'student' || item.type === 'assessment') {
+          success = await syncAssessmentResult(item.data as OfflineResult);
         }
 
         if (success) {

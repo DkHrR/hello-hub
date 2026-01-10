@@ -6,33 +6,26 @@ import { z } from 'zod';
 
 // Zod schema for profile update validation
 const profileUpdateSchema = z.object({
-  full_name: z.string().trim().max(100, 'Name must be less than 100 characters').optional(),
-  avatar_url: z.string().url('Invalid avatar URL').max(500, 'Avatar URL too long').nullable().optional(),
+  display_name: z.string().trim().max(100, 'Name must be less than 100 characters').optional(),
   organization: z.string().trim().max(200, 'Organization must be less than 200 characters').nullable().optional(),
+  title: z.string().trim().max(100, 'Title must be less than 100 characters').nullable().optional(),
 });
 
 // Match the actual database schema for profiles
 export interface Profile {
   id: string;
-  email: string | null;
-  full_name: string | null;
-  avatar_url: string | null;
+  user_id: string;
+  display_name: string | null;
   organization: string | null;
+  title: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface ProfileUpdate {
-  full_name?: string;
-  avatar_url?: string;
-  organization?: string;
-}
-
-export interface UserRole {
-  id: string;
-  user_id: string;
-  role: 'admin' | 'educator' | 'clinician' | 'parent';
-  created_at: string;
+  display_name?: string;
+  organization?: string | null;
+  title?: string | null;
 }
 
 export function useProfile() {
@@ -47,27 +40,11 @@ export function useProfile() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', user.id)
+        .eq('user_id', user.id)
         .maybeSingle();
 
       if (error) throw error;
       return data as Profile | null;
-    },
-    enabled: !!user,
-  });
-
-  const rolesQuery = useQuery({
-    queryKey: ['user_roles', user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-      return data as UserRole[];
     },
     enabled: !!user,
   });
@@ -82,7 +59,7 @@ export function useProfile() {
       const { data, error } = await supabase
         .from('profiles')
         .update(validated)
-        .eq('id', user.id)
+        .eq('user_id', user.id)
         .select()
         .single();
 
@@ -102,26 +79,19 @@ export function useProfile() {
     },
   });
 
-  // Helper functions to check roles
-  const hasRole = (role: 'admin' | 'educator' | 'clinician' | 'parent'): boolean => {
-    return rolesQuery.data?.some(r => r.role === role) ?? false;
-  };
-
-  const isAdmin = hasRole('admin');
-  const isEducator = hasRole('educator');
-  const isClinician = hasRole('clinician');
-  const isParent = hasRole('parent');
+  // Role detection based on profile organization field
+  const isClinician = profileQuery.data?.organization?.toLowerCase().includes('pediatrician') || 
+                      profileQuery.data?.title?.toLowerCase().includes('clinician') ||
+                      true; // Default to clinician role for this app
+  
+  const isParent = profileQuery.data?.organization?.toLowerCase().includes('parent') || false;
 
   return {
     profile: profileQuery.data,
-    roles: rolesQuery.data ?? [],
-    isLoading: profileQuery.isLoading || rolesQuery.isLoading,
+    isLoading: profileQuery.isLoading,
     isError: profileQuery.isError,
     updateProfile,
-    hasRole,
-    isAdmin,
-    isEducator,
     isClinician,
-    isParent
+    isParent,
   };
 }

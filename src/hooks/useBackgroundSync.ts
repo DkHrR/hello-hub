@@ -54,42 +54,39 @@ export function useBackgroundSync() {
     setState(prev => ({ ...prev, currentJob: job.id }));
     
     try {
-      switch (job.type) {
-        case 'result':
-        case 'assessment_result': {
-          const data = job.data;
-          
-          if (data.studentId && user) {
-            // Create diagnostic result
-            const { error: resultError } = await supabase
-              .from('diagnostic_results')
-              .insert({
-                student_id: data.studentId,
-                clinician_id: user.id,
-                session_id: `sync_${Date.now()}`,
-                overall_risk_level: data.results?.overallRiskLevel || 'low',
-                dyslexia_probability_index: data.results?.dyslexiaRisk || 0,
-                adhd_probability_index: data.results?.adhdRisk || 0,
-                dysgraphia_probability_index: data.results?.dysgraphiaRisk || 0,
-                voice_fluency_score: data.results?.readingFluency || 0,
-                voice_prosody_score: data.results?.prosodyScore || 0,
-                eye_total_fixations: data.eyeTrackingData?.totalFixations || 0,
-                eye_avg_fixation_duration: data.eyeTrackingData?.avgFixationDuration || 0,
-                eye_regression_count: data.eyeTrackingData?.regressionCount || 0,
-                fixation_data: data.eyeTrackingData?.fixations || [],
-                saccade_data: data.eyeTrackingData?.saccades || [],
-              });
+      // Handle all result-type jobs
+      if (job.type === 'result' || job.type === 'student') {
+        const data = job.data;
+        
+        if (data.studentId && user) {
+          // Create diagnostic result
+          const { error: resultError } = await supabase
+            .from('diagnostic_results')
+            .insert({
+              student_id: data.studentId,
+              clinician_id: user.id,
+              session_id: `sync_${Date.now()}`,
+              overall_risk_level: data.results?.overallRiskLevel || 'low',
+              dyslexia_probability_index: data.results?.dyslexiaRisk || 0,
+              adhd_probability_index: data.results?.adhdRisk || 0,
+              dysgraphia_probability_index: data.results?.dysgraphiaRisk || 0,
+              voice_fluency_score: data.results?.readingFluency || 0,
+              voice_prosody_score: data.results?.prosodyScore || 0,
+              eye_total_fixations: data.eyeTrackingData?.totalFixations || 0,
+              eye_avg_fixation_duration: data.eyeTrackingData?.avgFixationDuration || 0,
+              eye_regression_count: data.eyeTrackingData?.regressionCount || 0,
+              fixation_data: data.eyeTrackingData?.fixations || [],
+              saccade_data: data.eyeTrackingData?.saccades || [],
+            });
 
-            if (resultError) throw resultError;
-          }
-          
-          return true;
+          if (resultError) throw resultError;
         }
         
-        default:
-          console.warn(`Unknown sync job type: ${job.type}`);
-          return true; // Remove unknown jobs
+        return true;
       }
+      
+      console.warn(`Unknown sync job type: ${job.type}`);
+      return true; // Remove unknown jobs
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error(`Sync job ${job.id} failed:`, errorMessage);
@@ -182,7 +179,7 @@ export function useBackgroundSync() {
     results: any,
     eyeTrackingData: any
   ): Promise<string> => {
-    const jobId = await enqueueSync('assessment_result', {
+    const jobId = await enqueueSync('result', {
       studentId,
       studentName,
       results,

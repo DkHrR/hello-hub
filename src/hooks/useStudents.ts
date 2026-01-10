@@ -4,55 +4,48 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-// Zod schemas for input validation
+// Zod schemas for input validation - matches actual database schema
 const studentInsertSchema = z.object({
-  first_name: z.string().trim().min(1, 'First name is required').max(100, 'First name must be less than 100 characters'),
-  last_name: z.string().trim().min(1, 'Last name is required').max(100, 'Last name must be less than 100 characters'),
-  date_of_birth: z.string().nullable().optional(),
-  grade_level: z.string().max(20, 'Grade level must be less than 20 characters').nullable().optional(),
-  school: z.string().max(200, 'School name must be less than 200 characters').nullable().optional(),
+  name: z.string().trim().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
+  age: z.number().int().min(1, 'Age must be at least 1').max(100, 'Age must be less than 100'),
+  grade: z.string().max(20, 'Grade must be less than 20 characters'),
   notes: z.string().max(2000, 'Notes must be less than 2000 characters').nullable().optional(),
 });
 
 const studentUpdateSchema = z.object({
-  first_name: z.string().trim().min(1, 'First name is required').max(100, 'First name must be less than 100 characters').optional(),
-  last_name: z.string().trim().min(1, 'Last name is required').max(100, 'Last name must be less than 100 characters').optional(),
-  date_of_birth: z.string().nullable().optional(),
-  grade_level: z.string().max(20, 'Grade level must be less than 20 characters').nullable().optional(),
-  school: z.string().max(200, 'School name must be less than 200 characters').nullable().optional(),
+  name: z.string().trim().min(1, 'Name is required').max(200, 'Name must be less than 200 characters').optional(),
+  age: z.number().int().min(1, 'Age must be at least 1').max(100, 'Age must be less than 100').optional(),
+  grade: z.string().max(20, 'Grade must be less than 20 characters').optional(),
   notes: z.string().max(2000, 'Notes must be less than 2000 characters').nullable().optional(),
+  risk_level: z.enum(['low', 'moderate', 'high']).optional(),
 });
 
 // Match the actual database schema for students
 export interface Student {
   id: string;
-  created_by: string;
-  first_name: string;
-  last_name: string;
-  date_of_birth: string | null;
-  grade_level: string | null;
-  school: string | null;
+  clinician_id: string;
+  name: string;
+  age: number;
+  grade: string;
   notes: string | null;
+  risk_level: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface StudentInsert {
-  first_name: string;
-  last_name: string;
-  date_of_birth?: string | null;
-  grade_level?: string | null;
-  school?: string | null;
+  name: string;
+  age: number;
+  grade: string;
   notes?: string | null;
 }
 
 export interface StudentUpdate {
-  first_name?: string;
-  last_name?: string;
-  date_of_birth?: string | null;
-  grade_level?: string | null;
-  school?: string | null;
+  name?: string;
+  age?: number;
+  grade?: string;
   notes?: string | null;
+  risk_level?: 'low' | 'moderate' | 'high';
 }
 
 export function useStudents() {
@@ -68,7 +61,7 @@ export function useStudents() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return data as Student[];
     },
     enabled: !!user,
   });
@@ -82,20 +75,18 @@ export function useStudents() {
       
       const { data, error } = await supabase
         .from('students')
-        .insert([{
-          first_name: validated.first_name,
-          last_name: validated.last_name,
-          date_of_birth: validated.date_of_birth ?? null,
-          grade_level: validated.grade_level ?? null,
-          school: validated.school ?? null,
+        .insert({
+          name: validated.name,
+          age: validated.age,
+          grade: validated.grade,
           notes: validated.notes ?? null,
-          created_by: user.id,
-        }])
+          clinician_id: user.id,
+        })
         .select()
         .single();
 
       if (error) throw error;
-      return data;
+      return data as Student;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students'] });
@@ -123,7 +114,7 @@ export function useStudents() {
         .single();
 
       if (error) throw error;
-      return data;
+      return data as Student;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['students'] });

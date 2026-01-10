@@ -47,7 +47,7 @@ export default function AuthPage() {
         setPendingUser({
           id: user.id,
           email: user.email || '',
-          name: profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || ''
+          name: profile?.display_name || user.user_metadata?.full_name || user.user_metadata?.name || ''
         });
         setShowRoleSelection(true);
       }
@@ -98,7 +98,7 @@ export default function AuthPage() {
       .update({ 
         organization: roleDisplayMap[role]
       })
-      .eq('id', pendingUser.id);
+      .eq('user_id', pendingUser.id);
     
     setIsSubmitting(false);
     
@@ -486,6 +486,9 @@ export default function AuthPage() {
                               {errors.password && (
                                 <p className="text-sm text-destructive">{errors.password}</p>
                               )}
+                              <p className="text-xs text-muted-foreground">
+                                Min 12 chars with uppercase, lowercase, number, and special character
+                              </p>
                             </div>
                             
                             <Button type="submit" className="w-full" disabled={isSubmitting}>
@@ -544,8 +547,8 @@ export default function AuthPage() {
               </CardContent>
             </Card>
             
-            <p className="text-center text-xs text-muted-foreground mt-4">
-              By signing in, you agree to our Terms of Service and Privacy Policy
+            <p className="text-center text-sm text-muted-foreground mt-6">
+              By signing in, you agree to our Terms of Service and Privacy Policy.
             </p>
           </motion.div>
         )}
