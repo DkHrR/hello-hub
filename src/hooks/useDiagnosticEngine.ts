@@ -224,7 +224,7 @@ export function useDiagnosticEngine() {
     // Save to diagnostic_results table (matches actual schema)
     const { error: resultError } = await supabase
       .from('diagnostic_results')
-      .insert({
+      .insert([{
         student_id: studentId,
         clinician_id: user.id,
         session_id: sessionId,
@@ -246,21 +246,21 @@ export function useDiagnosticEngine() {
         voice_prosody_score: clampScore(result.voice.prosodyScore),
         voice_words_per_minute: result.voice.wordsPerMinute,
         voice_pause_count: result.voice.pauseCount || 0,
-        voice_avg_pause_duration: result.voice.avgPauseDuration || 0,
+        voice_avg_pause_duration: result.voice.averagePauseDuration || 0,
         voice_phonemic_errors: result.voice.phonemicErrors,
         voice_stall_count: result.voice.stallCount || 0,
-        voice_avg_stall_duration: result.voice.avgStallDuration || 0,
-        voice_stall_events: result.voice.stallEvents || [],
+        voice_avg_stall_duration: result.voice.averageStallDuration || 0,
+        voice_stall_events: (result.voice.stallEvents || []) as unknown as any[],
         // Handwriting metrics
         handwriting_reversal_count: result.handwriting.reversalCount,
         handwriting_letter_crowding: result.handwriting.letterCrowding,
         handwriting_graphic_inconsistency: result.handwriting.graphicInconsistency,
         handwriting_line_adherence: result.handwriting.lineAdherence,
         // Cognitive metrics
-        cognitive_avg_pupil_dilation: result.cognitiveLoad.avgPupilDilation || 0,
+        cognitive_avg_pupil_dilation: result.cognitiveLoad.averagePupilDilation || 0,
         cognitive_overload_events: result.cognitiveLoad.overloadEvents,
         cognitive_stress_indicators: result.cognitiveLoad.stressIndicators,
-      });
+      }]);
 
     if (resultError) throw resultError;
 

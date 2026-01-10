@@ -137,7 +137,7 @@ export function useOfflineSync() {
         let success = false;
 
         // Handle all result-type jobs
-        if (item.type === 'result' || item.type === 'student' || item.type === 'assessment') {
+        if (item.type === 'assessment_result' || item.type === 'result' || item.type === 'student') {
           success = await syncAssessmentResult(item.data as OfflineResult);
         }
 

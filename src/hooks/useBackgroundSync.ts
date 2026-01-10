@@ -55,7 +55,7 @@ export function useBackgroundSync() {
     
     try {
       // Handle all result-type jobs
-      if (job.type === 'result' || job.type === 'student') {
+      if (job.type === 'assessment_result' || job.type === 'result' || job.type === 'student') {
         const data = job.data;
         
         if (data.studentId && user) {
@@ -179,7 +179,7 @@ export function useBackgroundSync() {
     results: any,
     eyeTrackingData: any
   ): Promise<string> => {
-    const jobId = await enqueueSync('result', {
+    const jobId = await enqueueSync('assessment_result', {
       studentId,
       studentName,
       results,
