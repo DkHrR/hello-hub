@@ -52,6 +52,7 @@
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.23.26",
     "html2canvas": "^1.4.1",
+    "idb": "^8.0.3",
     "input-otp": "^1.4.2",
     "jspdf": "^3.0.4",
     "lucide-react": "^0.462.0",
@@ -69,6 +70,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tesseract.js": "^7.0.0",
     "vaul": "^0.9.9",
+    "vite-plugin-pwa": "^1.2.0",
     "webgazer": "^3.4.0",
     "zod": "^3.25.76"
   },
