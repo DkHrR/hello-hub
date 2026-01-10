@@ -66,7 +66,7 @@ export interface OfflineResult {
 
 export interface SyncQueueItem {
   id: string;
-  type: 'assessment' | 'result' | 'student';
+  type: 'assessment_result' | 'result' | 'student';
   data: any;
   priority: number;
   retryCount: number;
