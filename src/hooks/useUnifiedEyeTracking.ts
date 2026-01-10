@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { GazePoint, Fixation, Saccade, EyeTrackingMetrics } from '@/types/diagnostic';
+import type { GazePoint, Fixation, Saccade, EyeTrackingMetrics, TrackingBackend, EyeTrackingDebugInfo } from '@/types/diagnostic';
 
 // MediaPipe Face Mesh indices for iris tracking
 const LEFT_IRIS_INDICES = [468, 469, 470, 471, 472];
@@ -20,31 +20,59 @@ export function useUnifiedEyeTracking() {
   const [fixations, setFixations] = useState<Fixation[]>([]);
   const [saccades, setSaccades] = useState<Saccade[]>([]);
   const [currentGaze, setCurrentGaze] = useState<{ x: number; y: number } | null>(null);
+  
+  // New state for backend and debug info
+  const [activeBackend, setActiveBackend] = useState<TrackingBackend>('none');
+  const [debugInfo, setDebugInfo] = useState<EyeTrackingDebugInfo>({
+    fps: 0,
+    landmarkCount: 0,
+    backend: 'none',
+    lastFrameTime: 0,
+    confidence: 0,
+    isProcessing: false
+  });
 
   const faceMeshRef = useRef<any>(null);
+  const webgazerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const lastGazeRef = useRef<GazePoint | null>(null);
   const fixationStartRef = useRef<{ x: number; y: number; timestamp: number } | null>(null);
   const gazeBufferRef = useRef<{ x: number; y: number }[]>([]);
   const calibrationOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  
+  // FPS tracking
+  const fpsRef = useRef({ frames: 0, lastCheck: Date.now() });
+  const initStartTimeRef = useRef<number>(0);
 
-  const FIXATION_THRESHOLD = 30; // pixels - tighter threshold for MediaPipe
-  const FIXATION_MIN_DURATION = 100; // ms
+  const FIXATION_THRESHOLD = 30;
+  const FIXATION_MIN_DURATION = 100;
   const SMOOTHING_WINDOW = 5;
 
+  // Update FPS counter
+  const updateFps = useCallback(() => {
+    fpsRef.current.frames++;
+    const now = Date.now();
+    if (now - fpsRef.current.lastCheck >= 1000) {
+      setDebugInfo(prev => ({
+        ...prev,
+        fps: fpsRef.current.frames,
+        lastFrameTime: now
+      }));
+      fpsRef.current = { frames: 0, lastCheck: now };
+    }
+  }, []);
+
   // Calculate gaze position from iris landmarks
-  const calculateGazeFromIris = useCallback((landmarks: any[]): { x: number; y: number } | null => {
+  const calculateGazeFromIris = useCallback((landmarks: any[]): { x: number; y: number; confidence: number } | null => {
     if (!landmarks || landmarks.length < 478) return null;
 
     try {
-      // Get iris centers
       const leftIrisPoints = LEFT_IRIS_INDICES.map(i => landmarks[i]).filter(Boolean);
       const rightIrisPoints = RIGHT_IRIS_INDICES.map(i => landmarks[i]).filter(Boolean);
 
       if (leftIrisPoints.length < 4 || rightIrisPoints.length < 4) return null;
 
-      // Calculate iris centers
       const leftCenter = {
         x: leftIrisPoints.reduce((sum, p) => sum + p.x, 0) / leftIrisPoints.length,
         y: leftIrisPoints.reduce((sum, p) => sum + p.y, 0) / leftIrisPoints.length
@@ -55,7 +83,6 @@ export function useUnifiedEyeTracking() {
         y: rightIrisPoints.reduce((sum, p) => sum + p.y, 0) / rightIrisPoints.length
       };
 
-      // Get eye corners for relative position
       const leftEyeOuter = landmarks[LEFT_EYE_INDICES[0]];
       const leftEyeInner = landmarks[LEFT_EYE_INDICES[1]];
       const rightEyeOuter = landmarks[RIGHT_EYE_INDICES[0]];
@@ -63,35 +90,49 @@ export function useUnifiedEyeTracking() {
 
       if (!leftEyeOuter || !leftEyeInner || !rightEyeOuter || !rightEyeInner) return null;
 
-      // Calculate relative iris position within each eye (0-1 range)
       const leftEyeWidth = Math.abs(leftEyeInner.x - leftEyeOuter.x);
       const rightEyeWidth = Math.abs(rightEyeInner.x - rightEyeOuter.x);
 
       const leftRelX = leftEyeWidth > 0 ? (leftCenter.x - leftEyeOuter.x) / leftEyeWidth : 0.5;
       const rightRelX = rightEyeWidth > 0 ? (rightCenter.x - rightEyeOuter.x) / rightEyeWidth : 0.5;
 
-      // Average the relative positions
       const avgRelX = (leftRelX + rightRelX) / 2;
       const avgRelY = (leftCenter.y + rightCenter.y) / 2;
 
-      // Map to screen coordinates (with calibration offset)
+      // Calculate confidence based on eye visibility
+      const eyeWidthRatio = Math.min(leftEyeWidth, rightEyeWidth) / Math.max(leftEyeWidth, rightEyeWidth);
+      const confidence = Math.min(eyeWidthRatio, 0.95);
+
       const screenX = avgRelX * window.innerWidth + calibrationOffsetRef.current.x;
       const screenY = avgRelY * window.innerHeight + calibrationOffsetRef.current.y;
 
-      return { x: screenX, y: screenY };
+      return { x: screenX, y: screenY, confidence };
     } catch {
       return null;
     }
   }, []);
 
   const processLandmarks = useCallback((landmarks: any[]) => {
-    const rawGaze = calculateGazeFromIris(landmarks);
-    if (!rawGaze) return;
+    const result = calculateGazeFromIris(landmarks);
+    if (!result) return;
 
+    const { x: rawX, y: rawY, confidence } = result;
     const timestamp = Date.now();
 
+    updateFps();
+
+    // Update debug info
+    setDebugInfo(prev => ({
+      ...prev,
+      landmarkCount: landmarks.length,
+      gazeX: rawX,
+      gazeY: rawY,
+      confidence,
+      isProcessing: true
+    }));
+
     // Apply smoothing
-    gazeBufferRef.current.push(rawGaze);
+    gazeBufferRef.current.push({ x: rawX, y: rawY });
     if (gazeBufferRef.current.length > SMOOTHING_WINDOW) {
       gazeBufferRef.current.shift();
     }
@@ -131,7 +172,6 @@ export function useUnifiedEyeTracking() {
             }]);
           }
 
-          // Detect saccade
           const isRegression = smoothedX < lastGaze.x;
           setSaccades(prev => [...prev, {
             startX: lastGaze.x,
@@ -147,20 +187,88 @@ export function useUnifiedEyeTracking() {
     }
 
     lastGazeRef.current = point;
-  }, [calculateGazeFromIris]);
+  }, [calculateGazeFromIris, updateFps]);
 
-  const initialize = useCallback(async () => {
-    if (faceMeshRef.current) return true;
+  // Process WebGazer gaze data
+  const processWebGazerGaze = useCallback((x: number, y: number) => {
+    const timestamp = Date.now();
 
+    updateFps();
+
+    setDebugInfo(prev => ({
+      ...prev,
+      landmarkCount: 0, // WebGazer doesn't provide landmarks
+      gazeX: x,
+      gazeY: y,
+      confidence: 0.6, // Lower confidence for WebGazer
+      isProcessing: true
+    }));
+
+    // Apply smoothing
+    gazeBufferRef.current.push({ x, y });
+    if (gazeBufferRef.current.length > SMOOTHING_WINDOW) {
+      gazeBufferRef.current.shift();
+    }
+
+    const bufferLength = gazeBufferRef.current.length;
+    if (bufferLength === 0) return;
+
+    const smoothedX = gazeBufferRef.current.reduce((sum, p) => sum + p.x, 0) / bufferLength;
+    const smoothedY = gazeBufferRef.current.reduce((sum, p) => sum + p.y, 0) / bufferLength;
+
+    const point: GazePoint = { x: smoothedX, y: smoothedY, timestamp };
+
+    setCurrentGaze({ x: smoothedX, y: smoothedY });
+    setGazeData(prev => [...prev.slice(-500), point]);
+
+    // Same fixation/saccade detection
+    const lastGaze = lastGazeRef.current;
+    if (lastGaze) {
+      const distance = Math.sqrt(
+        Math.pow(smoothedX - lastGaze.x, 2) + Math.pow(smoothedY - lastGaze.y, 2)
+      );
+
+      if (distance < FIXATION_THRESHOLD) {
+        if (!fixationStartRef.current) {
+          fixationStartRef.current = { x: smoothedX, y: smoothedY, timestamp };
+        }
+      } else {
+        const fixationStart = fixationStartRef.current;
+        if (fixationStart) {
+          const duration = timestamp - fixationStart.timestamp;
+          if (duration >= FIXATION_MIN_DURATION) {
+            setFixations(prev => [...prev, {
+              x: fixationStart.x,
+              y: fixationStart.y,
+              duration,
+              timestamp: fixationStart.timestamp
+            }]);
+          }
+
+          const isRegression = smoothedX < lastGaze.x;
+          setSaccades(prev => [...prev, {
+            startX: lastGaze.x,
+            startY: lastGaze.y,
+            endX: smoothedX,
+            endY: smoothedY,
+            duration: timestamp - lastGaze.timestamp,
+            isRegression
+          }]);
+        }
+        fixationStartRef.current = null;
+      }
+    }
+
+    lastGazeRef.current = point;
+  }, [updateFps]);
+
+  // Initialize MediaPipe FaceMesh
+  const initializeMediaPipe = useCallback(async (): Promise<boolean> => {
     try {
-      // Check for camera support
       if (!navigator.mediaDevices?.getUserMedia) {
-        setIsSupported(false);
-        setInitError('Camera not supported in this browser');
-        return false;
+        throw new Error('Camera not supported');
       }
 
-      // Get video stream
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 640, height: 480 }
       });
@@ -172,7 +280,6 @@ export function useUnifiedEyeTracking() {
       await video.play();
       videoRef.current = video;
 
-      // Initialize MediaPipe Face Mesh with CDN
       const FaceMeshModule = await import('@mediapipe/face_mesh');
       const FaceMesh = FaceMeshModule.FaceMesh;
 
@@ -182,7 +289,7 @@ export function useUnifiedEyeTracking() {
 
       faceMesh.setOptions({
         maxNumFaces: 1,
-        refineLandmarks: true, // Enable iris tracking
+        refineLandmarks: true,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
       });
@@ -194,48 +301,147 @@ export function useUnifiedEyeTracking() {
       });
 
       faceMeshRef.current = faceMesh;
-      setIsInitialized(true);
-      setInitError(null);
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to initialize eye tracking';
-      setInitError(message);
-      setIsSupported(false);
-      return false;
+      console.warn('MediaPipe initialization failed:', error);
+      throw error;
     }
   }, [processLandmarks]);
 
+  // Initialize WebGazer as fallback
+  const initializeWebGazer = useCallback(async (): Promise<boolean> => {
+    try {
+      const webgazer = (await import('webgazer')).default;
+
+      // Configure WebGazer
+      webgazer.setRegression('ridge');
+      webgazer.showVideo(false);
+      webgazer.showFaceOverlay(false);
+      webgazer.showFaceFeedbackBox(false);
+      webgazer.showPredictionPoints(false);
+
+      // Set gaze listener
+      webgazer.setGazeListener((data: { x: number; y: number } | null) => {
+        if (data && data.x !== null && data.y !== null) {
+          processWebGazerGaze(data.x, data.y);
+        }
+      });
+
+      await webgazer.begin();
+      webgazerRef.current = webgazer;
+      return true;
+    } catch (error) {
+      console.warn('WebGazer initialization failed:', error);
+      throw error;
+    }
+  }, [processWebGazerGaze]);
+
+  // Main initialize function with fallback
+  const initialize = useCallback(async () => {
+    if (faceMeshRef.current || webgazerRef.current) return true;
+
+    initStartTimeRef.current = Date.now();
+
+    // Try MediaPipe first
+    try {
+      console.log('Attempting MediaPipe FaceMesh initialization...');
+      const success = await initializeMediaPipe();
+      if (success) {
+        const initTime = Date.now() - initStartTimeRef.current;
+        setActiveBackend('mediapipe');
+        setDebugInfo(prev => ({
+          ...prev,
+          backend: 'mediapipe',
+          initializationTime: initTime
+        }));
+        setIsInitialized(true);
+        setInitError(null);
+        console.log('MediaPipe initialized successfully in', initTime, 'ms');
+        return true;
+      }
+    } catch (error) {
+      console.warn('MediaPipe failed, falling back to WebGazer:', error);
+    }
+
+    // Fallback to WebGazer
+    try {
+      console.log('Attempting WebGazer initialization...');
+      const success = await initializeWebGazer();
+      if (success) {
+        const initTime = Date.now() - initStartTimeRef.current;
+        setActiveBackend('webgazer');
+        setDebugInfo(prev => ({
+          ...prev,
+          backend: 'webgazer',
+          initializationTime: initTime,
+          errorMessage: 'Using WebGazer fallback (lower precision)'
+        }));
+        setIsInitialized(true);
+        setInitError('Using WebGazer fallback (lower precision)');
+        console.log('WebGazer initialized successfully in', initTime, 'ms');
+        return true;
+      }
+    } catch (error) {
+      console.error('WebGazer also failed:', error);
+      const message = 'Both MediaPipe and WebGazer initialization failed';
+      setInitError(message);
+      setDebugInfo(prev => ({
+        ...prev,
+        backend: 'none',
+        errorMessage: message
+      }));
+    }
+
+    setActiveBackend('none');
+    setIsSupported(false);
+    return false;
+  }, [initializeMediaPipe, initializeWebGazer]);
+
   const startTracking = useCallback(async () => {
-    if (!faceMeshRef.current || !videoRef.current) {
+    if (!faceMeshRef.current && !webgazerRef.current) {
       const success = await initialize();
       if (!success) return;
     }
 
     setIsTracking(true);
 
-    const processFrame = async () => {
-      if (!faceMeshRef.current || !videoRef.current) return;
+    // Only need frame loop for MediaPipe
+    if (faceMeshRef.current && videoRef.current) {
+      const processFrame = async () => {
+        if (!faceMeshRef.current || !videoRef.current) return;
 
-      if (videoRef.current.readyState >= 2) {
-        await faceMeshRef.current.send({ image: videoRef.current });
-      }
+        if (videoRef.current.readyState >= 2) {
+          await faceMeshRef.current.send({ image: videoRef.current });
+        }
 
-      animationFrameRef.current = requestAnimationFrame(processFrame);
-    };
+        animationFrameRef.current = requestAnimationFrame(processFrame);
+      };
 
-    processFrame();
+      processFrame();
+    }
+    // WebGazer handles its own frame loop internally
   }, [initialize]);
 
   const stop = useCallback(() => {
     setIsTracking(false);
+    setDebugInfo(prev => ({ ...prev, isProcessing: false }));
+    
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
+    }
+
+    // Pause WebGazer if active
+    if (webgazerRef.current) {
+      webgazerRef.current.pause();
     }
   }, []);
 
   const resume = useCallback(() => {
     if (isInitialized) {
+      if (webgazerRef.current) {
+        webgazerRef.current.resume();
+      }
       startTracking();
     }
   }, [isInitialized, startTracking]);
@@ -249,7 +455,6 @@ export function useUnifiedEyeTracking() {
     gazeBufferRef.current = [];
   }, []);
 
-  // Calibration adjustment
   const applyCalibrationOffset = useCallback((offsetX: number, offsetY: number) => {
     calibrationOffsetRef.current = { x: offsetX, y: offsetY };
     setIsCalibrated(true);
@@ -262,7 +467,6 @@ export function useUnifiedEyeTracking() {
       ? fixations.reduce((sum, f) => sum + f.duration, 0) / fixations.length
       : 0;
 
-    // Calculate Fixation Intersection Coefficient (FIC)
     let intersections = 0;
     for (let i = 0; i < saccades.length - 1; i++) {
       for (let j = i + 1; j < saccades.length; j++) {
@@ -279,7 +483,6 @@ export function useUnifiedEyeTracking() {
 
     const fic = saccades.length > 1 ? intersections / (saccades.length * (saccades.length - 1) / 2) : 0;
 
-    // Chaos index based on gaze path variability
     let chaosIndex = 0;
     if (gazeData.length > 2) {
       let totalVariance = 0;
@@ -313,6 +516,9 @@ export function useUnifiedEyeTracking() {
       if (faceMeshRef.current) {
         faceMeshRef.current.close?.();
       }
+      if (webgazerRef.current) {
+        webgazerRef.current.end?.();
+      }
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
         tracks.forEach(track => track.stop());
@@ -330,6 +536,8 @@ export function useUnifiedEyeTracking() {
     fixations,
     saccades,
     currentGaze,
+    activeBackend,
+    debugInfo,
     initialize,
     startTracking,
     stop,

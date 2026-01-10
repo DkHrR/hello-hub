@@ -388,9 +388,14 @@ export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
             </div>
           </div>
           
-          <p className="text-xs text-muted-foreground text-center mt-4">
-            Inspired by the research standards of IIT Madras and global clinical benchmarks
-          </p>
+          <div className="text-center mt-4 space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Inspired by the research standards of IIT Madras and global clinical benchmarks
+            </p>
+            <p className="text-xs text-primary/60">
+              💡 Tip: Press Ctrl+Shift+D during assessment to toggle debug overlay
+            </p>
+          </div>
         </CardContent>
       </Card>
     </motion.div>

@@ -81,6 +81,21 @@ export interface CalibrationPoint {
   completed: boolean;
 }
 
+export type TrackingBackend = 'mediapipe' | 'webgazer' | 'none';
+
+export interface EyeTrackingDebugInfo {
+  fps: number;
+  landmarkCount: number;
+  backend: TrackingBackend;
+  lastFrameTime: number;
+  confidence: number;
+  gazeX?: number;
+  gazeY?: number;
+  isProcessing: boolean;
+  initializationTime?: number;
+  errorMessage?: string;
+}
+
 export interface Student {
   id: string;
   name: string;

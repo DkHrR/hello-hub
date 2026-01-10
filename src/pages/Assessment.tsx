@@ -20,6 +20,7 @@ import { HandwritingUpload } from '@/components/handwriting/HandwritingUpload';
 import { StudentIntakeModal, StudentIntakeData } from '@/components/assessment/StudentIntakeModal';
 import { SessionRecoveryModal } from '@/components/session/SessionRecoveryModal';
 import { BrowserCompatibilityAlert } from '@/components/alerts/BrowserCompatibilityAlert';
+import { EyeTrackingDebugOverlay } from '@/components/assessment/EyeTrackingDebugOverlay';
 import { useAssessmentController } from '@/hooks/useAssessmentController';
 import { useSessionPersistence } from '@/hooks/useSessionPersistence';
 import { useRealTimeNotifications } from '@/hooks/useRealTimeNotifications';
@@ -455,6 +456,13 @@ export default function AssessmentPage() {
                   word={controller.stallWord}
                   position={controller.stallPosition}
                   duration={controller.stallDuration}
+                />
+
+                {/* Eye Tracking Debug Overlay - Toggle with Ctrl+Shift+D */}
+                <EyeTrackingDebugOverlay
+                  debugInfo={controller.eyeTracking.debugInfo}
+                  isCalibrated={controller.eyeTracking.isCalibrated}
+                  isTracking={controller.eyeTracking.isTracking}
                 />
               </motion.div>
             )}

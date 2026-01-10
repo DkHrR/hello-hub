@@ -12,7 +12,9 @@ import type {
   HandwritingMetrics,
   CognitiveLoadMetrics,
   Fixation,
-  Saccade
+  Saccade,
+  EyeTrackingDebugInfo,
+  TrackingBackend
 } from '@/types/diagnostic';
 
 export type AssessmentStep = 
@@ -76,10 +78,11 @@ export function useAssessmentController(options: UseAssessmentControllerOptions 
     setStep('calibration');
   }, []);
   
-  // Calibration complete - start reading test
+  // Calibration complete - start reading test with tracking
   const handleCalibrationComplete = useCallback(async () => {
     eyeTracking.setIsCalibrated(true);
     await eyeTracking.initialize();
+    await eyeTracking.startTracking(); // Actually start the tracking loop
     cognitiveLoad.startMonitoring();
     setStep('reading');
   }, [eyeTracking, cognitiveLoad]);
@@ -276,7 +279,9 @@ export function useAssessmentController(options: UseAssessmentControllerOptions 
       gazeData: eyeTracking.gazeData,
       fixations: eyeTracking.fixations,
       saccades: eyeTracking.saccades,
-      getMetrics: eyeTracking.getMetrics
+      getMetrics: eyeTracking.getMetrics,
+      activeBackend: eyeTracking.activeBackend,
+      debugInfo: eyeTracking.debugInfo
     },
     
     // Speech recognition passthrough
