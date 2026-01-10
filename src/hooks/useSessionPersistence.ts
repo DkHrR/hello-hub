@@ -7,9 +7,11 @@ import type {
   Saccade 
 } from '@/types/diagnostic';
 import { useAuth } from '@/contexts/AuthContext';
+import { encryptData, decryptData, isCryptoSupported, generateSecureId } from '@/lib/crypto';
 
 const SESSION_STORAGE_KEY = 'neuroread_assessment_session';
 const AUTO_SAVE_INTERVAL = 5000; // 5 seconds
+const SESSION_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 
 interface AssessmentSession {
   id: string;
@@ -36,38 +38,104 @@ export function useSessionPersistence() {
   const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const currentSessionRef = useRef<AssessmentSession | null>(null);
 
+  // Get encryption key (user ID)
+  const getEncryptionKey = useCallback(() => {
+    if (!user?.id) {
+      throw new Error('User must be authenticated for session persistence');
+    }
+    return user.id;
+  }, [user]);
+
+  // Save encrypted session to localStorage
+  const saveSession = useCallback(async (session: AssessmentSession) => {
+    if (!user?.id) {
+      console.warn('Cannot save session: user not authenticated');
+      return;
+    }
+
+    if (!isCryptoSupported()) {
+      console.error('Web Crypto API not supported - session data cannot be securely stored');
+      return;
+    }
+
+    try {
+      const updated = { ...session, lastSavedAt: new Date().toISOString() };
+      const jsonData = JSON.stringify(updated);
+      const encrypted = await encryptData(jsonData, user.id);
+      localStorage.setItem(SESSION_STORAGE_KEY, encrypted);
+      currentSessionRef.current = updated;
+    } catch (error) {
+      // On encryption failure, do NOT store unencrypted data
+      console.error('Failed to save session securely');
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      throw error;
+    }
+  }, [user]);
+
+  // Load and decrypt session from localStorage
+  const loadSession = useCallback(async (): Promise<AssessmentSession | null> => {
+    if (!user?.id) return null;
+
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!saved) return null;
+
+    if (!isCryptoSupported()) {
+      // Clear potentially unsafe data
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+
+    try {
+      const decrypted = await decryptData(saved, user.id);
+      const session = JSON.parse(decrypted) as AssessmentSession;
+      
+      // Validate session age
+      const lastSaved = new Date(session.lastSavedAt).getTime();
+      const isExpired = Date.now() - lastSaved > SESSION_MAX_AGE_MS;
+      
+      if (isExpired) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        return null;
+      }
+      
+      return session;
+    } catch (error) {
+      // On decryption failure, clear corrupted/tampered data
+      console.error('Failed to decrypt session - clearing data');
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+  }, [user]);
+
   // Check for existing session on mount
   useEffect(() => {
-    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (saved) {
+    if (!user?.id) return;
+
+    const checkForSession = async () => {
       try {
-        const session = JSON.parse(saved) as AssessmentSession;
-        // Only recover if session is less than 1 hour old
-        const lastSaved = new Date(session.lastSavedAt).getTime();
-        const hourAgo = Date.now() - 60 * 60 * 1000;
+        const session = await loadSession();
         
-        if (lastSaved > hourAgo && session.step !== 'intro' && session.step !== 'results') {
+        if (session && session.step !== 'intro' && session.step !== 'results') {
           setHasRecoverableSession(true);
           setRecoveredSession(session);
-        } else {
-          // Session too old, clear it
-          localStorage.removeItem(SESSION_STORAGE_KEY);
         }
       } catch {
-        localStorage.removeItem(SESSION_STORAGE_KEY);
+        // Session check failed - already handled in loadSession
       }
-    }
-  }, []);
+    };
+
+    checkForSession();
+  }, [user?.id, loadSession]);
 
   // Create new session
-  const createSession = useCallback((data: {
+  const createSession = useCallback(async (data: {
     studentId: string | null;
     studentName: string;
     studentAge: number;
     studentGrade: string;
   }) => {
     const session: AssessmentSession = {
-      id: `session_${Date.now()}`,
+      id: `session_${generateSecureId()}`,
       studentId: data.studentId,
       studentName: data.studentName,
       studentAge: data.studentAge,
@@ -85,23 +153,16 @@ export function useSessionPersistence() {
     };
 
     currentSessionRef.current = session;
-    saveSession(session);
+    await saveSession(session);
     return session;
-  }, []);
-
-  // Save session to localStorage
-  const saveSession = useCallback((session: AssessmentSession) => {
-    const updated = { ...session, lastSavedAt: new Date().toISOString() };
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updated));
-    currentSessionRef.current = updated;
-  }, []);
+  }, [saveSession]);
 
   // Update session data
-  const updateSession = useCallback((updates: Partial<AssessmentSession>) => {
+  const updateSession = useCallback(async (updates: Partial<AssessmentSession>) => {
     if (!currentSessionRef.current) return;
     
     const updated = { ...currentSessionRef.current, ...updates };
-    saveSession(updated);
+    await saveSession(updated);
   }, [saveSession]);
 
   // Start auto-save
@@ -110,9 +171,13 @@ export function useSessionPersistence() {
       clearInterval(autoSaveIntervalRef.current);
     }
 
-    autoSaveIntervalRef.current = setInterval(() => {
+    autoSaveIntervalRef.current = setInterval(async () => {
       const data = getData();
-      updateSession(data);
+      try {
+        await updateSession(data);
+      } catch (error) {
+        console.error('Auto-save failed');
+      }
     }, AUTO_SAVE_INTERVAL);
   }, [updateSession]);
 
@@ -149,6 +214,17 @@ export function useSessionPersistence() {
     setHasRecoverableSession(false);
     setRecoveredSession(null);
   }, [stopAutoSave]);
+
+  // Clear on logout
+  useEffect(() => {
+    if (!user) {
+      // User logged out - clear any session data
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      currentSessionRef.current = null;
+      setHasRecoverableSession(false);
+      setRecoveredSession(null);
+    }
+  }, [user]);
 
   // Cleanup on unmount
   useEffect(() => {
