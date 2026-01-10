@@ -109,7 +109,7 @@ export function LiveAssessmentMonitor({
 
   const getRiskBadge = () => {
     if (!dyslexiaBiomarkers) return null;
-    const score = dyslexiaBiomarkers.compositeScore?.overallRisk || 0;
+    const score = dyslexiaBiomarkers.dyslexiaRiskScore || 0;
     
     if (score < 30) return <Badge className="bg-green-500">Low Risk</Badge>;
     if (score < 60) return <Badge className="bg-yellow-500">Moderate Risk</Badge>;
@@ -203,7 +203,7 @@ export function LiveAssessmentMonitor({
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
                       <p className="text-muted-foreground">Risk Score</p>
-                      <p className="text-2xl font-bold">{(dyslexiaBiomarkers.compositeScore?.overallRisk || 0).toFixed(0)}%</p>
+                      <p className="text-2xl font-bold">{(dyslexiaBiomarkers.dyslexiaRiskScore || 0).toFixed(0)}%</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Risk Level</p>
