@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { useOfflineSync } from '@/hooks/useOfflineSync';
+import { useBackgroundSync } from '@/hooks/useBackgroundSync';
 import { getCachedStudents, cacheStudent, CachedStudent } from '@/lib/offlineStorage';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,14 +8,15 @@ interface OfflineContextType {
   isOnline: boolean;
   isSyncing: boolean;
   pendingCount: number;
+  failedCount: number;
   cachedStudents: CachedStudent[];
-  saveResultOffline: (
+  queueAssessmentResult: (
     studentId: string | null,
     studentName: string,
     results: any,
     eyeTrackingData: any
   ) => Promise<string>;
-  forceSync: () => Promise<void>;
+  forceSyncAll: () => Promise<void>;
   refreshCachedStudents: () => Promise<void>;
 }
 
@@ -23,7 +24,13 @@ const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
 
 export function OfflineProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const { status, saveResultOffline, forceSync } = useOfflineSync();
+  const { 
+    isOnline, 
+    isSyncing, 
+    queueStats, 
+    queueAssessmentResult, 
+    forceSyncAll 
+  } = useBackgroundSync();
   const [cachedStudents, setCachedStudents] = useState<CachedStudent[]>([]);
 
   // Load cached students on mount
@@ -33,10 +40,10 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
 
   // Cache students from server when online
   useEffect(() => {
-    if (status.isOnline && user) {
+    if (isOnline && user) {
       cacheStudentsFromServer();
     }
-  }, [status.isOnline, user]);
+  }, [isOnline, user]);
 
   const loadCachedStudents = async () => {
     const students = await getCachedStudents();
@@ -71,7 +78,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshCachedStudents = async () => {
-    if (status.isOnline) {
+    if (isOnline) {
       await cacheStudentsFromServer();
     }
     await loadCachedStudents();
@@ -80,12 +87,13 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
   return (
     <OfflineContext.Provider
       value={{
-        isOnline: status.isOnline,
-        isSyncing: status.isSyncing,
-        pendingCount: status.unsyncedCount + status.queueCount,
+        isOnline,
+        isSyncing,
+        pendingCount: queueStats.pending,
+        failedCount: queueStats.failed,
         cachedStudents,
-        saveResultOffline,
-        forceSync,
+        queueAssessmentResult,
+        forceSyncAll,
         refreshCachedStudents,
       }}
     >
