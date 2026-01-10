@@ -49,69 +49,38 @@ export function useBackgroundSync() {
     setState(prev => ({ ...prev, queueStats: stats }));
   }, []);
 
-  // Process a single sync job
+  // Process a single sync job - save to diagnostic_results table
   const processJob = useCallback(async (job: SyncQueueItem): Promise<boolean> => {
     setState(prev => ({ ...prev, currentJob: job.id }));
     
     try {
       switch (job.type) {
-        case 'result': {
+        case 'result':
+        case 'assessment_result': {
           const data = job.data;
           
-          if (data.studentId) {
-            // Create assessment
-            const { data: assessment, error: assessmentError } = await supabase
-              .from('assessments')
+          if (data.studentId && user) {
+            // Create diagnostic result
+            const { error: resultError } = await supabase
+              .from('diagnostic_results')
               .insert({
                 student_id: data.studentId,
-                assessor_id: user?.id,
-                assessment_type: 'comprehensive',
-                status: 'completed',
-                started_at: data.createdAt,
-                completed_at: new Date().toISOString(),
-              })
-              .select()
-              .single();
-
-            if (assessmentError) throw assessmentError;
-
-            // Insert eye tracking data
-            if (data.eyeTrackingData) {
-              const { error: eyeError } = await supabase
-                .from('eye_tracking_data')
-                .insert({
-                  assessment_id: assessment.id,
-                  fixation_points: data.eyeTrackingData.fixations,
-                  saccade_patterns: data.eyeTrackingData.saccades,
-                  average_fixation_duration: data.eyeTrackingData.avgFixationDuration,
-                  regression_count: data.eyeTrackingData.regressionCount,
-                  reading_speed_wpm: data.eyeTrackingData.readingSpeed,
-                  saccade_count: data.eyeTrackingData.saccadeCount,
-                  pso_count: data.eyeTrackingData.psoCount,
-                  glissade_count: data.eyeTrackingData.glissadeCount,
-                  biomarkers: data.eyeTrackingData.biomarkers,
-                });
-              
-              if (eyeError) console.warn('Eye tracking save warning:', eyeError);
-            }
-
-            // Insert assessment results
-            const { error: resultsError } = await supabase
-              .from('assessment_results')
-              .insert({
-                assessment_id: assessment.id,
-                overall_risk_score: data.results?.overallRisk,
-                reading_fluency_score: data.results?.readingFluency,
-                phonological_awareness_score: data.results?.phonologicalAwareness,
-                visual_processing_score: data.results?.visualProcessing,
-                attention_score: data.results?.attention,
-                recommendations: data.results?.recommendations,
-                raw_data: data.results?.rawData,
-                dyslexia_biomarkers: data.results?.dyslexiaBiomarkers,
-                ai_insights: data.results?.aiInsights,
+                clinician_id: user.id,
+                session_id: `sync_${Date.now()}`,
+                overall_risk_level: data.results?.overallRiskLevel || 'low',
+                dyslexia_probability_index: data.results?.dyslexiaRisk || 0,
+                adhd_probability_index: data.results?.adhdRisk || 0,
+                dysgraphia_probability_index: data.results?.dysgraphiaRisk || 0,
+                voice_fluency_score: data.results?.readingFluency || 0,
+                voice_prosody_score: data.results?.prosodyScore || 0,
+                eye_total_fixations: data.eyeTrackingData?.totalFixations || 0,
+                eye_avg_fixation_duration: data.eyeTrackingData?.avgFixationDuration || 0,
+                eye_regression_count: data.eyeTrackingData?.regressionCount || 0,
+                fixation_data: data.eyeTrackingData?.fixations || [],
+                saccade_data: data.eyeTrackingData?.saccades || [],
               });
 
-            if (resultsError) throw resultsError;
+            if (resultError) throw resultError;
           }
           
           return true;

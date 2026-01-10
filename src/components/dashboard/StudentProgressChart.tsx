@@ -46,13 +46,13 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
 
       const { data, error } = await supabase
         .from('students')
-        .select('id, first_name, last_name')
-        .order('first_name');
+        .select('id, name')
+        .order('name');
 
       if (!error && data) {
         const formattedStudents = data.map(s => ({
           id: s.id,
-          name: `${s.first_name} ${s.last_name}`
+          name: s.name
         }));
         setStudents(formattedStudents);
         if (!selectedStudent && formattedStudents.length > 0) {
@@ -91,36 +91,18 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
           break;
       }
 
-      // Get assessment results for this student via assessments table
-      const { data: assessments, error: assessmentError } = await supabase
-        .from('assessments')
-        .select('id')
-        .eq('student_id', selectedStudent);
-
-      if (assessmentError || !assessments) {
-        setIsLoading(false);
-        return;
-      }
-
-      const assessmentIds = assessments.map(a => a.id);
-      
-      if (assessmentIds.length === 0) {
-        setProgressData([]);
-        setIsLoading(false);
-        return;
-      }
-
+      // Get diagnostic results for this student
       const { data, error } = await supabase
-        .from('assessment_results')
-        .select('created_at, overall_risk_score, reading_fluency_score, visual_processing_score, attention_score')
-        .in('assessment_id', assessmentIds)
+        .from('diagnostic_results')
+        .select('created_at, overall_risk_level, dyslexia_probability_index, voice_fluency_score, adhd_probability_index')
+        .eq('student_id', selectedStudent)
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: true });
 
       if (!error && data) {
         const formattedData: ProgressDataPoint[] = data.map(record => {
-          // Convert risk score to percentage
-          const riskScore = (record.overall_risk_score ?? 0) * 100;
+          // Convert risk level to percentage
+          const riskScore = (record.dyslexia_probability_index ?? 0) * 100;
           
           return {
             date: new Date(record.created_at).toLocaleDateString('en-US', {
@@ -128,9 +110,9 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
               day: 'numeric'
             }),
             overallRisk: riskScore,
-            fluencyScore: record.reading_fluency_score ?? 0,
-            visualScore: record.visual_processing_score ?? 0,
-            attentionScore: record.attention_score ?? 0,
+            fluencyScore: record.voice_fluency_score ?? 0,
+            visualScore: (record.dyslexia_probability_index ?? 0) * 100,
+            attentionScore: 100 - ((record.adhd_probability_index ?? 0) * 100),
           };
         });
         

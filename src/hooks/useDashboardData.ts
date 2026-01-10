@@ -36,15 +36,12 @@ export function useDashboardData() {
     enabled: !!user,
   });
 
-  const assessmentsQuery = useQuery({
-    queryKey: ['assessments_with_results', user?.id],
+  const diagnosticResultsQuery = useQuery({
+    queryKey: ['diagnostic_results_dashboard', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('assessments')
-        .select(`
-          *,
-          assessment_results (*)
-        `)
+        .from('diagnostic_results')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -63,19 +60,19 @@ export function useDashboardData() {
 
   // Map students with their risk levels from latest assessment
   const studentsWithScores: StudentWithRisk[] = studentsQuery.data?.map(student => {
-    // Find latest assessment for this student
-    const studentAssessments = assessmentsQuery.data?.filter(a => a.student_id === student.id) ?? [];
-    const latestAssessment = studentAssessments[0];
-    const latestResult = latestAssessment?.assessment_results?.[0];
+    // Find latest diagnostic result for this student
+    const studentResults = diagnosticResultsQuery.data?.filter(r => r.student_id === student.id) ?? [];
+    const latestResult = studentResults[0];
     
-    const riskLevel = getRiskLevel(latestResult?.overall_risk_score ?? null);
+    const riskLevel = latestResult?.overall_risk_level as 'low' | 'medium' | 'high' || 'low';
+    const riskScore = latestResult?.dyslexia_probability_index ?? 0;
     
     return {
       id: student.id,
-      name: `${student.first_name} ${student.last_name}`,
-      grade: student.grade_level ?? 'N/A',
+      name: student.name,
+      grade: student.grade ?? 'N/A',
       risk: riskLevel,
-      score: latestResult?.overall_risk_score ? latestResult.overall_risk_score * 100 : 0,
+      score: riskScore * 100,
       lastAssessed: latestResult?.created_at 
         ? new Date(latestResult.created_at).toLocaleDateString()
         : 'Never',
@@ -84,7 +81,7 @@ export function useDashboardData() {
 
   const stats: DashboardStats = {
     totalStudents: studentsQuery.data?.length ?? 0,
-    totalAssessments: assessmentsQuery.data?.filter(a => a.status === 'completed').length ?? 0,
+    totalAssessments: diagnosticResultsQuery.data?.length ?? 0,
     highRiskCount: studentsWithScores.filter(s => s.risk === 'high').length,
     moderateRiskCount: studentsWithScores.filter(s => s.risk === 'medium').length,
     lowRiskCount: studentsWithScores.filter(s => s.risk === 'low').length,
@@ -101,11 +98,11 @@ export function useDashboardData() {
     students: studentsWithScores,
     stats,
     riskDistribution,
-    isLoading: studentsQuery.isLoading || assessmentsQuery.isLoading,
-    error: studentsQuery.error || assessmentsQuery.error,
+    isLoading: studentsQuery.isLoading || diagnosticResultsQuery.isLoading,
+    error: studentsQuery.error || diagnosticResultsQuery.error,
     refetch: () => {
       studentsQuery.refetch();
-      assessmentsQuery.refetch();
+      diagnosticResultsQuery.refetch();
     },
   };
 }

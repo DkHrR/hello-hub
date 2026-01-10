@@ -18,9 +18,9 @@ export function LiveCounter({ className = '' }: LiveCounterProps) {
   useEffect(() => {
     const fetchCount = async () => {
       try {
-        // Query assessment_results table
+        // Query diagnostic_results table (the actual table in the schema)
         const { count: totalCount, error } = await supabase
-          .from('assessment_results')
+          .from('diagnostic_results')
           .select('*', { count: 'exact', head: true });
         
         if (!error && totalCount !== null) {
@@ -38,13 +38,13 @@ export function LiveCounter({ className = '' }: LiveCounterProps) {
 
     // Subscribe to real-time updates
     const channel = supabase
-      .channel('assessment-counter')
+      .channel('diagnostic-counter')
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'assessment_results'
+          table: 'diagnostic_results'
         },
         () => {
           setCount(prev => prev + 1);
