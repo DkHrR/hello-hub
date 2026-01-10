@@ -5,55 +5,36 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 
 // Zod schemas for assessment input validation
-const assessmentTypeSchema = z.enum(['reading', 'phonological', 'visual', 'comprehensive']);
-
-const createAssessmentSchema = z.object({
-  student_id: z.string().uuid('Invalid student ID'),
-  assessment_type: assessmentTypeSchema.optional().default('comprehensive'),
-});
-
 const scoreSchema = z.number().min(0).max(100).optional();
 
-const assessmentResultsSchema = z.object({
-  overall_risk_score: scoreSchema,
-  reading_fluency_score: scoreSchema,
-  phonological_awareness_score: scoreSchema,
-  visual_processing_score: scoreSchema,
-  attention_score: scoreSchema,
-  recommendations: z.array(z.string().max(500)).max(20).optional(),
-  raw_data: z.record(z.unknown()).optional(),
+const diagnosticResultsSchema = z.object({
+  dyslexia_probability_index: scoreSchema,
+  adhd_probability_index: scoreSchema,
+  dysgraphia_probability_index: scoreSchema,
+  voice_fluency_score: z.number().min(0).max(100).optional(),
+  voice_prosody_score: z.number().min(0).max(100).optional(),
+  overall_risk_level: z.enum(['low', 'medium', 'high']).optional(),
 });
 
-export interface AssessmentResult {
-  id: string;
-  assessment_id: string;
-  overall_risk_score: number | null;
-  reading_fluency_score: number | null;
-  phonological_awareness_score: number | null;
-  visual_processing_score: number | null;
-  attention_score: number | null;
-  recommendations: any;
-  raw_data: any;
-  created_at: string;
-}
-
-export interface Assessment {
+export interface DiagnosticResult {
   id: string;
   student_id: string;
-  assessor_id: string;
-  assessment_type: string;
-  status: string;
-  started_at: string | null;
-  completed_at: string | null;
+  clinician_id: string;
+  session_id: string;
+  overall_risk_level: string | null;
+  dyslexia_probability_index: number | null;
+  adhd_probability_index: number | null;
+  dysgraphia_probability_index: number | null;
+  voice_fluency_score: number | null;
+  voice_prosody_score: number | null;
   created_at: string;
 }
 
-export interface AssessmentWithResults extends Assessment {
-  assessment_results: AssessmentResult[];
+export interface DiagnosticResultWithStudent extends DiagnosticResult {
   students: {
-    first_name: string;
-    last_name: string;
-    grade_level: string | null;
+    name: string;
+    age: number;
+    grade: string;
   } | null;
 }
 
@@ -61,189 +42,108 @@ export function useAssessments() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  // Fetch all assessments with results
+  // Fetch all diagnostic results with student info
   const assessmentsQuery = useQuery({
-    queryKey: ['assessments', user?.id],
+    queryKey: ['diagnostic_results', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('assessments')
+        .from('diagnostic_results')
         .select(`
           *,
-          assessment_results (*),
-          students (first_name, last_name, grade_level)
+          students (name, age, grade)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as AssessmentWithResults[];
+      return data as DiagnosticResultWithStudent[];
     },
     enabled: !!user,
   });
 
-  // Create new assessment
-  const createAssessment = useMutation({
+  // Create new diagnostic result
+  const createDiagnosticResult = useMutation({
     mutationFn: async (input: {
       student_id: string;
-      assessment_type?: 'reading' | 'phonological' | 'visual' | 'comprehensive';
+      session_id: string;
+      results?: {
+        dyslexia_probability_index?: number;
+        adhd_probability_index?: number;
+        dysgraphia_probability_index?: number;
+        voice_fluency_score?: number;
+        voice_prosody_score?: number;
+        overall_risk_level?: 'low' | 'medium' | 'high';
+      };
     }) => {
       if (!user) throw new Error('Not authenticated');
 
       // Validate input data
-      const validated = createAssessmentSchema.parse(input);
+      z.string().uuid('Invalid student ID').parse(input.student_id);
+      z.string().min(1).parse(input.session_id);
+      
+      const validatedResults = input.results 
+        ? diagnosticResultsSchema.parse(input.results)
+        : {};
 
       const { data, error } = await supabase
-        .from('assessments')
+        .from('diagnostic_results')
         .insert({
-          student_id: validated.student_id,
-          assessor_id: user.id,
-          assessment_type: validated.assessment_type,
-          status: 'pending'
+          student_id: input.student_id,
+          clinician_id: user.id,
+          session_id: input.session_id,
+          ...validatedResults,
         })
         .select()
         .single();
 
       if (error) throw error;
-      return data as Assessment;
+      return data as DiagnosticResult;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['assessments'] });
+      queryClient.invalidateQueries({ queryKey: ['diagnostic_results'] });
     },
     onError: (error) => {
       if (error instanceof z.ZodError) {
         toast.error('Validation error: ' + error.errors.map(e => e.message).join(', '));
       } else {
-        toast.error('Failed to create assessment: ' + error.message);
+        toast.error('Failed to create diagnostic result: ' + error.message);
       }
     },
   });
 
-  // Start assessment
-  const startAssessment = useMutation({
-    mutationFn: async (assessmentId: string) => {
-      const { error } = await supabase
-        .from('assessments')
-        .update({ 
-          status: 'in_progress',
-          started_at: new Date().toISOString()
-        })
-        .eq('id', assessmentId);
-
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['assessments'] });
-    },
-  });
-
-  // Complete assessment and save results
-  const completeAssessment = useMutation({
+  // Update diagnostic result
+  const updateDiagnosticResult = useMutation({
     mutationFn: async (input: {
-      assessmentId: string;
+      id: string;
       results: {
-        overall_risk_score?: number;
-        reading_fluency_score?: number;
-        phonological_awareness_score?: number;
-        visual_processing_score?: number;
-        attention_score?: number;
-        recommendations?: string[];
-        raw_data?: any;
+        dyslexia_probability_index?: number;
+        adhd_probability_index?: number;
+        dysgraphia_probability_index?: number;
+        voice_fluency_score?: number;
+        voice_prosody_score?: number;
+        overall_risk_level?: 'low' | 'medium' | 'high';
       };
     }) => {
-      // Validate assessment ID
-      z.string().uuid('Invalid assessment ID').parse(input.assessmentId);
-      
-      // Validate results
-      const validatedResults = assessmentResultsSchema.parse(input.results);
-      
-      // Update assessment status
-      const { error: assessmentError } = await supabase
-        .from('assessments')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', input.assessmentId);
+      // Validate input
+      z.string().uuid('Invalid result ID').parse(input.id);
+      const validatedResults = diagnosticResultsSchema.parse(input.results);
 
-      if (assessmentError) throw assessmentError;
+      const { error } = await supabase
+        .from('diagnostic_results')
+        .update(validatedResults)
+        .eq('id', input.id);
 
-      // Save results
-      const { data, error: resultError } = await supabase
-        .from('assessment_results')
-        .insert([{
-          assessment_id: input.assessmentId,
-          overall_risk_score: validatedResults.overall_risk_score,
-          reading_fluency_score: validatedResults.reading_fluency_score,
-          phonological_awareness_score: validatedResults.phonological_awareness_score,
-          visual_processing_score: validatedResults.visual_processing_score,
-          attention_score: validatedResults.attention_score,
-          recommendations: validatedResults.recommendations ? JSON.parse(JSON.stringify(validatedResults.recommendations)) : null,
-          raw_data: validatedResults.raw_data ? JSON.parse(JSON.stringify(validatedResults.raw_data)) : null
-        }])
-        .select()
-        .single();
-
-      if (resultError) throw resultError;
-      return data;
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['assessments'] });
-      toast.success('Assessment completed and saved');
+      queryClient.invalidateQueries({ queryKey: ['diagnostic_results'] });
+      toast.success('Assessment updated successfully');
     },
     onError: (error) => {
       if (error instanceof z.ZodError) {
         toast.error('Validation error: ' + error.errors.map(e => e.message).join(', '));
       } else {
-        toast.error('Failed to save assessment: ' + error.message);
+        toast.error('Failed to update assessment: ' + error.message);
       }
-    },
-  });
-
-  // Save assessment results (separate from completion)
-  const saveResults = useMutation({
-    mutationFn: async (input: {
-      assessment_id: string;
-      overall_risk_score?: number;
-      reading_fluency_score?: number;
-      phonological_awareness_score?: number;
-      visual_processing_score?: number;
-      attention_score?: number;
-      recommendations?: string[];
-      raw_data?: any;
-    }) => {
-      // Validate assessment ID
-      z.string().uuid('Invalid assessment ID').parse(input.assessment_id);
-      
-      // Validate results data
-      const validatedResults = assessmentResultsSchema.parse({
-        overall_risk_score: input.overall_risk_score,
-        reading_fluency_score: input.reading_fluency_score,
-        phonological_awareness_score: input.phonological_awareness_score,
-        visual_processing_score: input.visual_processing_score,
-        attention_score: input.attention_score,
-        recommendations: input.recommendations,
-        raw_data: input.raw_data,
-      });
-      
-      const { data, error } = await supabase
-        .from('assessment_results')
-        .insert([{
-          assessment_id: input.assessment_id,
-          overall_risk_score: validatedResults.overall_risk_score,
-          reading_fluency_score: validatedResults.reading_fluency_score,
-          phonological_awareness_score: validatedResults.phonological_awareness_score,
-          visual_processing_score: validatedResults.visual_processing_score,
-          attention_score: validatedResults.attention_score,
-          recommendations: validatedResults.recommendations ? JSON.parse(JSON.stringify(validatedResults.recommendations)) : null,
-          raw_data: validatedResults.raw_data ? JSON.parse(JSON.stringify(validatedResults.raw_data)) : null
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['assessments'] });
     },
   });
 
@@ -252,29 +152,27 @@ export function useAssessments() {
     isLoading: assessmentsQuery.isLoading,
     isError: assessmentsQuery.isError,
     error: assessmentsQuery.error,
-    createAssessment,
-    startAssessment,
-    completeAssessment,
-    saveResults,
+    createDiagnosticResult,
+    updateDiagnosticResult,
     refetch: assessmentsQuery.refetch
   };
 }
 
-export function useAssessmentResults(assessmentId?: string) {
+export function useDiagnosticResults(studentId?: string) {
   return useQuery({
-    queryKey: ['assessment_results', assessmentId],
+    queryKey: ['diagnostic_results', studentId],
     queryFn: async () => {
-      if (!assessmentId) return null;
+      if (!studentId) return null;
       
       const { data, error } = await supabase
-        .from('assessment_results')
+        .from('diagnostic_results')
         .select('*')
-        .eq('assessment_id', assessmentId)
+        .eq('student_id', studentId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as AssessmentResult[];
+      return data as DiagnosticResult[];
     },
-    enabled: !!assessmentId,
+    enabled: !!studentId,
   });
 }

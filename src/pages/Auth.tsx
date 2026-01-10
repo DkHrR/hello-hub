@@ -119,13 +119,9 @@ export default function AuthPage() {
     setIsSubmitting(false);
     
     if (error) {
-      if (error.message?.includes('Invalid login credentials')) {
-        toast.error('Invalid email or password. Please try again.');
-      } else if (error.message?.includes('Email not confirmed')) {
-        toast.error('Please confirm your email before signing in.');
-      } else {
-        toast.error(error.message || 'Failed to sign in');
-      }
+      // Use generic error message to prevent account enumeration
+      console.error('Sign in error:', error.message);
+      toast.error('Unable to sign in. Please check your credentials and try again.');
     } else {
       toast.success('Welcome back!');
       // Role check happens in useEffect
@@ -145,11 +141,9 @@ export default function AuthPage() {
     setIsSubmitting(false);
     
     if (error) {
-      if (error.message?.includes('already registered')) {
-        toast.error('This email is already registered. Please sign in instead.');
-      } else {
-        toast.error(error.message || 'Failed to create account');
-      }
+      // Use generic error message to prevent account enumeration
+      console.error('Sign up error:', error.message);
+      toast.error('Unable to create account. Please try again or use a different email.');
     } else {
       toast.success('Account created! Please select your role.');
       // Role selection will trigger via useEffect
@@ -192,12 +186,13 @@ export default function AuthPage() {
     const { error } = await resetPassword(email);
     setIsSubmitting(false);
     
+    // Always show success message to prevent account enumeration
+    // Even if email doesn't exist, we don't reveal that information
     if (error) {
-      toast.error(error.message || 'Failed to send reset email');
-    } else {
-      toast.success('Password reset email sent! Check your inbox.');
-      setShowForgotPassword(false);
+      console.error('Password reset error:', error.message);
     }
+    toast.success('If an account exists with this email, a reset link has been sent.');
+    setShowForgotPassword(false);
   };
 
   if (loading) {

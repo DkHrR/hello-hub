@@ -97,55 +97,28 @@ export function useOfflineSync() {
     if (!user) return false;
 
     try {
-      // First, create the assessment if studentId exists
-      let assessmentId = result.assessmentId;
-
+      // Save to diagnostic_results table
       if (result.studentId) {
-        const { data: assessment, error: assessmentError } = await supabase
-          .from('assessments')
+        const { error: resultError } = await supabase
+          .from('diagnostic_results')
           .insert({
             student_id: result.studentId,
-            assessor_id: user.id,
-            assessment_type: 'comprehensive',
-            status: 'completed',
-            started_at: result.createdAt,
-            completed_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-
-        if (assessmentError) throw assessmentError;
-        assessmentId = assessment.id;
-
-        // Insert eye tracking data
-        if (result.eyeTrackingData) {
-          await supabase.from('eye_tracking_data').insert({
-            assessment_id: assessmentId,
-            fixation_points: result.eyeTrackingData.fixations,
-            saccade_patterns: result.eyeTrackingData.saccades,
-            average_fixation_duration: result.eyeTrackingData.avgFixationDuration,
-            regression_count: result.eyeTrackingData.regressionCount,
-            reading_speed_wpm: result.eyeTrackingData.readingSpeed,
-            saccade_count: result.eyeTrackingData.saccadeCount,
-            pso_count: result.eyeTrackingData.psoCount,
-            glissade_count: result.eyeTrackingData.glissadeCount,
-            biomarkers: result.eyeTrackingData.biomarkers,
+            clinician_id: user.id,
+            session_id: result.assessmentId || `offline_${Date.now()}`,
+            overall_risk_level: result.results?.overallRiskLevel || 'low',
+            dyslexia_probability_index: result.results?.dyslexiaRisk || 0,
+            adhd_probability_index: result.results?.adhdRisk || 0,
+            dysgraphia_probability_index: result.results?.dysgraphiaRisk || 0,
+            voice_fluency_score: result.results?.readingFluency || 0,
+            voice_prosody_score: result.results?.prosodyScore || 0,
+            eye_total_fixations: result.eyeTrackingData?.totalFixations || 0,
+            eye_avg_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
+            eye_regression_count: result.eyeTrackingData?.regressionCount || 0,
+            fixation_data: result.eyeTrackingData?.fixations || [],
+            saccade_data: result.eyeTrackingData?.saccades || [],
           });
-        }
 
-        // Insert assessment results
-        await supabase.from('assessment_results').insert({
-          assessment_id: assessmentId,
-          overall_risk_score: result.results.overallRisk,
-          reading_fluency_score: result.results.readingFluency,
-          phonological_awareness_score: result.results.phonologicalAwareness,
-          visual_processing_score: result.results.visualProcessing,
-          attention_score: result.results.attention,
-          recommendations: result.results.recommendations,
-          raw_data: result.results.rawData,
-          dyslexia_biomarkers: result.results.dyslexiaBiomarkers,
-          ai_insights: result.results.aiInsights,
-        });
+        if (resultError) throw resultError;
       }
 
       return true;
@@ -165,7 +138,8 @@ export function useOfflineSync() {
 
         switch (item.type) {
           case 'result':
-            success = await syncAssessmentResult(item.data);
+          case 'assessment_result':
+            success = await syncAssessmentResult(item.data as OfflineResult);
             break;
           // Add other sync types as needed
         }
