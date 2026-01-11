@@ -39,20 +39,21 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
   const [students, setStudents] = useState<{ id: string; name: string }[]>([]);
   const [timeRange, setTimeRange] = useState<'30d' | '90d' | '1y' | 'all'>('90d');
 
-  // Fetch students for dropdown
+  // Fetch students for dropdown - use correct column names
   useEffect(() => {
     async function fetchStudents() {
       if (!user) return;
 
       const { data, error } = await supabase
         .from('students')
-        .select('id, name')
-        .order('name');
+        .select('id, first_name, last_name')
+        .eq('created_by', user.id)
+        .order('first_name');
 
       if (!error && data) {
         const formattedStudents = data.map(s => ({
           id: s.id,
-          name: s.name
+          name: `${s.first_name} ${s.last_name || ''}`.trim()
         }));
         setStudents(formattedStudents);
         if (!selectedStudent && formattedStudents.length > 0) {
@@ -64,7 +65,7 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
     fetchStudents();
   }, [user, selectedStudent]);
 
-  // Fetch progress data for selected student
+  // Fetch progress data for selected student using assessment_results via assessments
   useEffect(() => {
     async function fetchProgressData() {
       if (!selectedStudent) {
@@ -91,28 +92,32 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
           break;
       }
 
-      // Get diagnostic results for this student
+      // Get assessment results for this student via assessments table
       const { data, error } = await supabase
-        .from('diagnostic_results')
-        .select('created_at, overall_risk_level, dyslexia_probability_index, voice_fluency_score, adhd_probability_index')
-        .eq('student_id', selectedStudent)
+        .from('assessment_results')
+        .select(`
+          created_at,
+          overall_risk_score,
+          reading_fluency_score,
+          visual_processing_score,
+          attention_score,
+          assessments!inner (student_id)
+        `)
+        .eq('assessments.student_id', selectedStudent)
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        const formattedData: ProgressDataPoint[] = data.map(record => {
-          // Convert risk level to percentage
-          const riskScore = (record.dyslexia_probability_index ?? 0) * 100;
-          
+        const formattedData: ProgressDataPoint[] = data.map((record: any) => {
           return {
             date: new Date(record.created_at).toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric'
             }),
-            overallRisk: riskScore,
-            fluencyScore: record.voice_fluency_score ?? 0,
-            visualScore: (record.dyslexia_probability_index ?? 0) * 100,
-            attentionScore: 100 - ((record.adhd_probability_index ?? 0) * 100),
+            overallRisk: record.overall_risk_score ?? 0,
+            fluencyScore: record.reading_fluency_score ?? 0,
+            visualScore: record.visual_processing_score ?? 0,
+            attentionScore: record.attention_score ?? 0,
           };
         });
         

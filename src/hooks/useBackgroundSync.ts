@@ -50,7 +50,7 @@ export function useBackgroundSync() {
     setState(prev => ({ ...prev, queueStats: stats }));
   }, []);
 
-  // Process a single sync job - save to diagnostic_results table
+  // Process a single sync job - save to assessment_results table via assessments
   const processJob = useCallback(async (job: SyncQueueItem): Promise<boolean> => {
     setState(prev => ({ ...prev, currentJob: job.id }));
     
@@ -60,27 +60,55 @@ export function useBackgroundSync() {
         const data = job.data;
         
         if (data.studentId && user) {
-          // Create diagnostic result
-          const { error: resultError } = await supabase
-            .from('diagnostic_results')
+          // First, create or find an assessment for this student
+          const { data: assessment, error: assessmentError } = await supabase
+            .from('assessments')
             .insert({
               student_id: data.studentId,
-              clinician_id: user.id,
-              session_id: `sync_${Date.now()}`,
-              overall_risk_level: data.results?.overallRiskLevel || 'low',
-              dyslexia_probability_index: data.results?.dyslexiaRisk || 0,
-              adhd_probability_index: data.results?.adhdRisk || 0,
-              dysgraphia_probability_index: data.results?.dysgraphiaRisk || 0,
-              voice_fluency_score: data.results?.readingFluency || 0,
-              voice_prosody_score: data.results?.prosodyScore || 0,
-              eye_total_fixations: data.eyeTrackingData?.totalFixations || 0,
-              eye_avg_fixation_duration: data.eyeTrackingData?.avgFixationDuration || 0,
-              eye_regression_count: data.eyeTrackingData?.regressionCount || 0,
-              fixation_data: data.eyeTrackingData?.fixations || [],
-              saccade_data: data.eyeTrackingData?.saccades || [],
+              assessor_id: user.id,
+              assessment_type: 'comprehensive',
+              status: 'completed',
+              started_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (assessmentError) throw assessmentError;
+
+          // Then create the assessment result
+          const { error: resultError } = await supabase
+            .from('assessment_results')
+            .insert({
+              assessment_id: assessment.id,
+              overall_risk_score: data.results?.overallRiskLevel === 'high' ? 80 : 
+                                  data.results?.overallRiskLevel === 'medium' ? 50 : 20,
+              reading_fluency_score: data.results?.readingFluency || 0,
+              phonological_awareness_score: data.results?.phonologicalScore || 0,
+              attention_score: data.results?.attentionScore || 0,
+              visual_processing_score: data.results?.visualScore || 0,
+              raw_data: {
+                eyeTracking: data.eyeTrackingData || {},
+                syncedAt: new Date().toISOString(),
+              },
             });
 
           if (resultError) throw resultError;
+
+          // If there's eye tracking data, save it
+          if (data.eyeTrackingData) {
+            await supabase
+              .from('eye_tracking_data')
+              .insert({
+                assessment_id: assessment.id,
+                fixation_points: data.eyeTrackingData?.fixations || [],
+                saccade_patterns: data.eyeTrackingData?.saccades || [],
+                saccade_count: data.eyeTrackingData?.saccadeCount || 0,
+                regression_count: data.eyeTrackingData?.regressionCount || 0,
+                average_fixation_duration: data.eyeTrackingData?.avgFixationDuration || 0,
+                reading_speed_wpm: data.eyeTrackingData?.readingSpeedWpm || 0,
+              });
+          }
         }
         
         return true;

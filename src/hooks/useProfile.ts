@@ -4,29 +4,22 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { useUserRole } from './useUserRole';
+import type { Tables } from '@/integrations/supabase/types';
 
 // Zod schema for profile update validation
 const profileUpdateSchema = z.object({
-  display_name: z.string().trim().max(100, 'Name must be less than 100 characters').optional(),
+  full_name: z.string().trim().max(100, 'Name must be less than 100 characters').optional(),
   organization: z.string().trim().max(200, 'Organization must be less than 200 characters').nullable().optional(),
-  title: z.string().trim().max(100, 'Title must be less than 100 characters').nullable().optional(),
+  avatar_url: z.string().url('Invalid URL').nullable().optional(),
 });
 
-// Match the actual database schema for profiles
-export interface Profile {
-  id: string;
-  user_id: string;
-  display_name: string | null;
-  organization: string | null;
-  title: string | null;
-  created_at: string;
-  updated_at: string;
-}
+// Use the actual database schema for profiles
+type Profile = Tables<'profiles'>;
 
 export interface ProfileUpdate {
-  display_name?: string;
+  full_name?: string;
   organization?: string | null;
-  title?: string | null;
+  avatar_url?: string | null;
 }
 
 export function useProfile() {
@@ -49,11 +42,11 @@ export function useProfile() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .maybeSingle();
 
       if (error) throw error;
-      return data as Profile | null;
+      return data;
     },
     enabled: !!user,
   });
@@ -68,12 +61,12 @@ export function useProfile() {
       const { data, error } = await supabase
         .from('profiles')
         .update(validated)
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .select()
         .single();
 
       if (error) throw error;
-      return data as Profile;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });

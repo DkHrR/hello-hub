@@ -98,28 +98,55 @@ export function useOfflineSync() {
     if (!user) return false;
 
     try {
-      // Save to diagnostic_results table
-      if (result.studentId) {
-        const { error: resultError } = await supabase
-          .from('diagnostic_results')
-          .insert({
-            student_id: result.studentId,
-            clinician_id: user.id,
-            session_id: result.assessmentId || `offline_${Date.now()}`,
-            overall_risk_level: result.results?.overallRiskLevel || 'low',
-            dyslexia_probability_index: result.results?.dyslexiaRisk || 0,
-            adhd_probability_index: result.results?.adhdRisk || 0,
-            dysgraphia_probability_index: result.results?.dysgraphiaRisk || 0,
-            voice_fluency_score: result.results?.readingFluency || 0,
-            voice_prosody_score: result.results?.prosodyScore || 0,
-            eye_total_fixations: result.eyeTrackingData?.totalFixations || 0,
-            eye_avg_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
-            eye_regression_count: result.eyeTrackingData?.regressionCount || 0,
-            fixation_data: result.eyeTrackingData?.fixations || [],
-            saccade_data: result.eyeTrackingData?.saccades || [],
-          });
+      // First, create an assessment record
+      const { data: assessment, error: assessmentError } = await supabase
+        .from('assessments')
+        .insert({
+          assessor_id: user.id,
+          student_id: result.studentId!,
+          assessment_type: 'comprehensive',
+          status: 'completed',
+          started_at: result.createdAt,
+          completed_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-        if (resultError) throw resultError;
+      if (assessmentError) throw assessmentError;
+
+      // Then create the assessment result
+      const { error: resultError } = await supabase
+        .from('assessment_results')
+        .insert({
+          assessment_id: assessment.id,
+          overall_risk_score: result.results?.overallRiskLevel === 'high' ? 80 :
+                              result.results?.overallRiskLevel === 'medium' ? 50 : 20,
+          reading_fluency_score: result.results?.readingFluency || 0,
+          phonological_awareness_score: result.results?.phonologicalScore || 0,
+          attention_score: result.results?.attentionScore || 0,
+          visual_processing_score: result.results?.visualScore || 0,
+          raw_data: {
+            eyeTracking: result.eyeTrackingData || {},
+            syncedAt: new Date().toISOString(),
+            offlineId: result.id,
+          },
+        });
+
+      if (resultError) throw resultError;
+
+      // Save eye tracking data if available
+      if (result.eyeTrackingData) {
+        await supabase
+          .from('eye_tracking_data')
+          .insert({
+            assessment_id: assessment.id,
+            fixation_points: result.eyeTrackingData?.fixations || [],
+            saccade_patterns: result.eyeTrackingData?.saccades || [],
+            saccade_count: result.eyeTrackingData?.saccadeCount || 0,
+            regression_count: result.eyeTrackingData?.regressionCount || 0,
+            average_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
+            reading_speed_wpm: result.eyeTrackingData?.readingSpeedWpm || 0,
+          });
       }
 
       return true;
@@ -176,6 +203,9 @@ export function useOfflineSync() {
       let synced = 0;
 
       for (const result of unsyncedResults) {
+        // Skip results without studentId as they require a student
+        if (!result.studentId) continue;
+        
         const success = await syncAssessmentResult(result);
         if (success) {
           await markResultSynced(result.id);

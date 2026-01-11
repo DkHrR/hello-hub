@@ -1,29 +1,24 @@
 /**
  * Parent Access Hook
- * Manages parent portal access via parent_student_links table
+ * Manages parent portal access via parent_access_tokens table
  */
 
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
+import type { Tables } from '@/integrations/supabase/types';
 
-interface ParentStudentLink {
-  id: string;
-  student_id: string;
-  access_code: string;
-  parent_id: string | null;
-  linked_at: string;
-  linked_by: string;
-}
+type ParentAccessToken = Tables<'parent_access_tokens'>;
 
 interface CreateLinkParams {
   studentId: string;
+  expiresInDays?: number;
 }
 
 export function useParentAccess() {
   const { toast } = useToast();
-  const [links, setLinks] = useState<ParentStudentLink[]>([]);
+  const [tokens, setTokens] = useState<ParentAccessToken[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +33,8 @@ export function useParentAccess() {
 
   const createLink = useCallback(async ({
     studentId,
-  }: CreateLinkParams): Promise<ParentStudentLink | null> => {
+    expiresInDays = 30,
+  }: CreateLinkParams): Promise<ParentAccessToken | null> => {
     setIsLoading(true);
     setError(null);
 
@@ -47,13 +43,16 @@ export function useParentAccess() {
       if (!user) throw new Error('Not authenticated');
 
       const accessCode = generateAccessCode();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + expiresInDays);
 
       const { data, error: insertError } = await supabase
-        .from('parent_student_links')
+        .from('parent_access_tokens')
         .insert({
           student_id: studentId,
           access_code: accessCode,
-          linked_by: user.id,
+          created_by: user.id,
+          expires_at: expiresAt.toISOString(),
         })
         .select()
         .single();
@@ -65,7 +64,7 @@ export function useParentAccess() {
         description: `Share this code with parents: ${accessCode}`,
       });
 
-      return data as ParentStudentLink;
+      return data;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create access code';
       setError(message);
@@ -80,20 +79,20 @@ export function useParentAccess() {
     }
   }, [toast]);
 
-  const fetchLinksForStudent = useCallback(async (studentId: string) => {
+  const fetchTokensForStudent = useCallback(async (studentId: string) => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('parent_student_links')
+        .from('parent_access_tokens')
         .select('*')
         .eq('student_id', studentId)
-        .order('linked_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setLinks((data as ParentStudentLink[]) || []);
+      setTokens(data || []);
     } catch (err) {
-      logger.error('Error fetching links', err);
-      setLinks([]);
+      logger.error('Error fetching tokens', err);
+      setTokens([]);
     } finally {
       setIsLoading(false);
     }
@@ -134,15 +133,42 @@ export function useParentAccess() {
     return `${baseUrl}/parent-portal?code=${accessCode}`;
   }, []);
 
+  const revokeToken = useCallback(async (tokenId: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('parent_access_tokens')
+        .delete()
+        .eq('id', tokenId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Access revoked',
+        description: 'The parent access code has been revoked.',
+      });
+
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to revoke access';
+      toast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      });
+      return false;
+    }
+  }, [toast]);
+
   return {
-    links,
+    tokens,
     isLoading,
     error,
     createLink,
-    fetchLinksForStudent,
+    fetchTokensForStudent,
     validateAccessCode,
     getPortalData,
     getShareableUrl,
     generateAccessCode,
+    revokeToken,
   };
 }

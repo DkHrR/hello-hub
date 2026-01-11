@@ -2,12 +2,13 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
+// Profile interface matching the actual profiles table schema
 interface Profile {
   id: string;
-  user_id: string;
-  display_name: string | null;
+  email: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
   organization: string | null;
-  title: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,11 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('user_id', userId)
+      .eq('id', userId)
       .maybeSingle();
     
     if (!error && data) {
-      setProfile(data as Profile);
+      setProfile(data);
     }
   };
 

@@ -54,20 +54,20 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     try {
-      // Use correct column names from students table
+      // Use correct column names from students table (first_name, last_name, grade_level)
       const { data: students } = await supabase
         .from('students')
-        .select('id, name, age, grade')
-        .eq('clinician_id', user.id);
+        .select('id, first_name, last_name, grade_level, date_of_birth')
+        .eq('created_by', user.id);
 
       if (students) {
         for (const student of students) {
           await cacheStudent({
             id: student.id,
-            firstName: student.name.split(' ')[0] || student.name,
-            lastName: student.name.split(' ').slice(1).join(' ') || '',
-            gradeLevel: student.grade || '',
-            dateOfBirth: null,
+            firstName: student.first_name,
+            lastName: student.last_name || '',
+            gradeLevel: student.grade_level || '',
+            dateOfBirth: student.date_of_birth,
             cachedAt: new Date().toISOString(),
           });
         }

@@ -31,6 +31,9 @@ export function Header() {
     navigate('/');
   };
 
+  // Get display name from profile or email
+  const displayName = profile?.full_name || user?.email?.split('@')[0] || 'Account';
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
       <div className="container">
@@ -70,7 +73,7 @@ export function Header() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-2">
                     <User className="w-4 h-4" />
-                    {profile?.display_name || user.email?.split('@')[0] || 'Account'}
+                    {displayName}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">

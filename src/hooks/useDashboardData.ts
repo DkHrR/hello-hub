@@ -31,6 +31,7 @@ export function useDashboardData() {
       const { data, error } = await supabase
         .from('students')
         .select('*')
+        .eq('created_by', user!.id)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
@@ -39,14 +40,17 @@ export function useDashboardData() {
     enabled: !!user && !isIndividual,
   });
 
-  // Query for all diagnostic results (for clinicians - student assessments)
-  const diagnosticResultsQuery = useQuery({
-    queryKey: ['diagnostic_results_dashboard', user?.id],
+  // Query for all assessment results (for clinicians - student assessments)
+  const assessmentResultsQuery = useQuery({
+    queryKey: ['assessment_results_dashboard', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('diagnostic_results')
-        .select('*')
-        .not('student_id', 'is', null)
+        .from('assessment_results')
+        .select(`
+          *,
+          assessments!inner (student_id, assessor_id)
+        `)
+        .eq('assessments.assessor_id', user!.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -55,14 +59,17 @@ export function useDashboardData() {
     enabled: !!user && !isIndividual,
   });
 
-  // Query for self-assessments (for individual users)
+  // Query for self-assessments (for individual users) - using assessments table
   const selfAssessmentsQuery = useQuery({
     queryKey: ['self_assessments', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('diagnostic_results')
-        .select('*')
-        .eq('user_id', user!.id)
+        .from('assessments')
+        .select(`
+          *,
+          assessment_results (*)
+        `)
+        .eq('assessor_id', user!.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -74,26 +81,28 @@ export function useDashboardData() {
   // Calculate risk levels from assessment results
   const getRiskLevel = (riskScore: number | null): 'low' | 'medium' | 'high' => {
     if (riskScore === null) return 'low';
-    if (riskScore >= 0.6) return 'high';
-    if (riskScore >= 0.3) return 'medium';
+    if (riskScore >= 60) return 'high';
+    if (riskScore >= 30) return 'medium';
     return 'low';
   };
 
   // Map students with their risk levels from latest assessment
   const studentsWithScores: StudentWithRisk[] = studentsQuery.data?.map(student => {
-    // Find latest diagnostic result for this student
-    const studentResults = diagnosticResultsQuery.data?.filter(r => r.student_id === student.id) ?? [];
+    // Find latest assessment result for this student
+    const studentResults = assessmentResultsQuery.data?.filter(
+      (r: any) => r.assessments?.student_id === student.id
+    ) ?? [];
     const latestResult = studentResults[0];
     
-    const riskLevel = latestResult?.overall_risk_level as 'low' | 'medium' | 'high' || 'low';
-    const riskScore = latestResult?.dyslexia_probability_index ?? 0;
+    const riskScore = latestResult?.overall_risk_score ?? 0;
+    const riskLevel = getRiskLevel(riskScore);
     
     return {
       id: student.id,
-      name: student.name,
-      grade: student.grade ?? 'N/A',
+      name: `${student.first_name} ${student.last_name || ''}`.trim(),
+      grade: student.grade_level ?? 'N/A',
       risk: riskLevel,
-      score: riskScore * 100,
+      score: riskScore,
       lastAssessed: latestResult?.created_at 
         ? new Date(latestResult.created_at).toLocaleDateString()
         : 'Never',
@@ -102,7 +111,7 @@ export function useDashboardData() {
 
   const stats: DashboardStats = {
     totalStudents: studentsQuery.data?.length ?? 0,
-    totalAssessments: diagnosticResultsQuery.data?.length ?? 0,
+    totalAssessments: assessmentResultsQuery.data?.length ?? 0,
     highRiskCount: studentsWithScores.filter(s => s.risk === 'high').length,
     moderateRiskCount: studentsWithScores.filter(s => s.risk === 'medium').length,
     lowRiskCount: studentsWithScores.filter(s => s.risk === 'low').length,
@@ -120,11 +129,11 @@ export function useDashboardData() {
     stats,
     riskDistribution,
     selfAssessments: selfAssessmentsQuery.data ?? [],
-    isLoading: studentsQuery.isLoading || diagnosticResultsQuery.isLoading || selfAssessmentsQuery.isLoading,
-    error: studentsQuery.error || diagnosticResultsQuery.error || selfAssessmentsQuery.error,
+    isLoading: studentsQuery.isLoading || assessmentResultsQuery.isLoading || selfAssessmentsQuery.isLoading,
+    error: studentsQuery.error || assessmentResultsQuery.error || selfAssessmentsQuery.error,
     refetch: () => {
       studentsQuery.refetch();
-      diagnosticResultsQuery.refetch();
+      assessmentResultsQuery.refetch();
       selfAssessmentsQuery.refetch();
     },
   };
