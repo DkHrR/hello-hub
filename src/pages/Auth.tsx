@@ -12,6 +12,7 @@ import { RoleSelection } from '@/components/auth/RoleSelection';
 import { toast } from 'sonner';
 import { Brain, Mail, Lock, User, Loader2, ArrowLeft } from 'lucide-react';
 import { useUserRole, UI_ROLE_TO_DB_ROLE, type AppRole } from '@/hooks/useUserRole';
+import { logger } from '@/lib/logger';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string()
@@ -101,7 +102,7 @@ export default function AuthPage() {
       navigate('/dashboard');
     } catch (error) {
       // Error is already handled by the mutation
-      console.error('Role selection failed:', error);
+      logger.error('Role selection failed', error);
     }
   };
 
@@ -115,7 +116,7 @@ export default function AuthPage() {
     
     if (error) {
       // Use generic error message to prevent account enumeration
-      console.error('Sign in error:', error.message);
+      logger.error('Sign in failed', error);
       toast.error('Unable to sign in. Please check your credentials and try again.');
     } else {
       toast.success('Welcome back!');
@@ -137,7 +138,7 @@ export default function AuthPage() {
     
     if (error) {
       // Use generic error message to prevent account enumeration
-      console.error('Sign up error:', error.message);
+      logger.error('Sign up failed', error);
       toast.error('Unable to create account. Please try again or use a different email.');
     } else {
       toast.success('Account created! Please select your role.');
@@ -184,7 +185,7 @@ export default function AuthPage() {
     // Always show success message to prevent account enumeration
     // Even if email doesn't exist, we don't reveal that information
     if (error) {
-      console.error('Password reset error:', error.message);
+      logger.error('Password reset failed', error);
     }
     toast.success('If an account exists with this email, a reset link has been sent.');
     setShowForgotPassword(false);

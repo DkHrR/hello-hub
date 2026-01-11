@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import {
   getUnsyncedResults,
   markResultSynced,
@@ -123,7 +124,7 @@ export function useOfflineSync() {
 
       return true;
     } catch (error) {
-      console.error('Failed to sync result:', error);
+      logger.error('Failed to sync result', error);
       return false;
     }
   };
@@ -158,7 +159,7 @@ export function useOfflineSync() {
           syncProgress: (processed / queue.length) * 100,
         }));
       } catch (error) {
-        console.error('Queue item sync failed:', error);
+        logger.error('Queue item sync failed', error);
       }
     }
   };
@@ -204,7 +205,7 @@ export function useOfflineSync() {
         toast.success(`Synced ${synced} assessment(s) successfully!`);
       }
     } catch (error) {
-      console.error('Sync failed:', error);
+      logger.error('Sync failed', error);
       toast.error('Failed to sync some data. Will retry later.');
     } finally {
       syncInProgress.current = false;

@@ -3,6 +3,8 @@
  * Uses Web Crypto API for secure encryption/decryption
  */
 
+import { logger } from '@/lib/logger';
+
 const ALGORITHM = 'AES-GCM';
 const KEY_LENGTH = 256;
 const IV_LENGTH = 12;
@@ -63,7 +65,7 @@ export async function encryptData(data: string, userId: string): Promise<string>
     // Convert to base64 for storage
     return btoa(String.fromCharCode(...combined));
   } catch (error) {
-    console.error('Encryption failed');
+    logger.error('Encryption failed', error);
     throw new Error('Failed to encrypt sensitive data');
   }
 }
@@ -96,7 +98,7 @@ export async function decryptData(encryptedData: string, userId: string): Promis
 
     return new TextDecoder().decode(decrypted);
   } catch (error) {
-    console.error('Decryption failed');
+    logger.error('Decryption failed', error);
     throw new Error('Failed to decrypt data - data may be corrupted or tampered');
   }
 }

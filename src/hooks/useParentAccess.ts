@@ -6,6 +6,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { logger } from '@/lib/logger';
 
 interface ParentStudentLink {
   id: string;
@@ -91,7 +92,7 @@ export function useParentAccess() {
       if (error) throw error;
       setLinks((data as ParentStudentLink[]) || []);
     } catch (err) {
-      console.error('Error fetching links:', err);
+      logger.error('Error fetching links', err);
       setLinks([]);
     } finally {
       setIsLoading(false);
@@ -123,7 +124,7 @@ export function useParentAccess() {
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error('Error fetching portal data:', err);
+      logger.error('Error fetching portal data', err);
       return null;
     }
   }, []);

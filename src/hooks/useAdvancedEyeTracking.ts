@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import * as tf from '@tensorflow/tfjs';
 import * as faceLandmarksDetection from '@tensorflow-models/face-landmarks-detection';
+import { logger } from '@/lib/logger';
 
 export interface GazePoint {
   x: number;
@@ -127,9 +128,9 @@ export function useAdvancedEyeTracking() {
       videoRef.current = video;
 
       setState(prev => ({ ...prev, isInitialized: true }));
-      console.log('[AdvancedEyeTracking] Initialized with TensorFlow.js Face Landmarks Detection');
+      logger.info('AdvancedEyeTracking initialized with TensorFlow.js Face Landmarks Detection');
     } catch (error) {
-      console.error('[AdvancedEyeTracking] Initialization error:', error);
+      logger.error('AdvancedEyeTracking initialization error', error);
       setState(prev => ({ 
         ...prev, 
         error: error instanceof Error ? error.message : 'Failed to initialize eye tracking' 
@@ -315,7 +316,7 @@ export function useAdvancedEyeTracking() {
         }
       }
     } catch (error) {
-      console.error('[AdvancedEyeTracking] Frame processing error:', error);
+      logger.error('AdvancedEyeTracking frame processing error', error);
     }
 
     lastFrameTimeRef.current = now;
@@ -324,13 +325,13 @@ export function useAdvancedEyeTracking() {
 
   const startTracking = useCallback(() => {
     if (!state.isInitialized) {
-      console.warn('[AdvancedEyeTracking] Not initialized');
+      logger.warn('AdvancedEyeTracking not initialized');
       return;
     }
 
     setState(prev => ({ ...prev, isTracking: true }));
     animationFrameRef.current = requestAnimationFrame(processFrame);
-    console.log('[AdvancedEyeTracking] Tracking started');
+    logger.info('AdvancedEyeTracking tracking started');
   }, [state.isInitialized, processFrame]);
 
   const stopTracking = useCallback(() => {
@@ -339,7 +340,7 @@ export function useAdvancedEyeTracking() {
       animationFrameRef.current = null;
     }
     setState(prev => ({ ...prev, isTracking: false }));
-    console.log('[AdvancedEyeTracking] Tracking stopped');
+    logger.info('AdvancedEyeTracking tracking stopped');
   }, []);
 
   const calibrate = useCallback((points: Array<{ screenX: number; screenY: number; gazeX: number; gazeY: number }>) => {
@@ -357,7 +358,7 @@ export function useAdvancedEyeTracking() {
     };
 
     setState(prev => ({ ...prev, isCalibrated: true }));
-    console.log('[AdvancedEyeTracking] Calibration applied:', calibrationRef.current);
+    logger.info('AdvancedEyeTracking calibration applied', { calibration: calibrationRef.current });
   }, []);
 
   const reset = useCallback(() => {

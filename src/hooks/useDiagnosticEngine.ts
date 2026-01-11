@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 import type { 
   EyeTrackingMetrics, 
   VoiceMetrics, 
@@ -207,7 +208,7 @@ export function useDiagnosticEngine() {
     });
     
     if (!validatedResult.success) {
-      console.warn('Diagnostic result validation warning:', validatedResult.error.errors);
+      logger.warn('Diagnostic result validation warning', { errors: validatedResult.error.errors });
       // Continue with original data but log the warning
     }
     

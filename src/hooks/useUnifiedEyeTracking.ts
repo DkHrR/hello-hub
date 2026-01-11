@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { GazePoint, Fixation, Saccade, EyeTrackingMetrics, TrackingBackend, EyeTrackingDebugInfo } from '@/types/diagnostic';
+import { logger } from '@/lib/logger';
 
 // MediaPipe Face Mesh indices for iris tracking
 const LEFT_IRIS_INDICES = [468, 469, 470, 471, 472];
@@ -303,7 +304,7 @@ export function useUnifiedEyeTracking() {
       faceMeshRef.current = faceMesh;
       return true;
     } catch (error) {
-      console.warn('MediaPipe initialization failed:', error);
+      logger.warn('MediaPipe initialization failed', error);
       throw error;
     }
   }, [processLandmarks]);
@@ -331,7 +332,7 @@ export function useUnifiedEyeTracking() {
       webgazerRef.current = webgazer;
       return true;
     } catch (error) {
-      console.warn('WebGazer initialization failed:', error);
+      logger.warn('WebGazer initialization failed', error);
       throw error;
     }
   }, [processWebGazerGaze]);
@@ -344,7 +345,7 @@ export function useUnifiedEyeTracking() {
 
     // Try MediaPipe first
     try {
-      console.log('Attempting MediaPipe FaceMesh initialization...');
+      logger.debug('Attempting MediaPipe FaceMesh initialization...');
       const success = await initializeMediaPipe();
       if (success) {
         const initTime = Date.now() - initStartTimeRef.current;
@@ -356,16 +357,16 @@ export function useUnifiedEyeTracking() {
         }));
         setIsInitialized(true);
         setInitError(null);
-        console.log('MediaPipe initialized successfully in', initTime, 'ms');
+        logger.info('MediaPipe initialized successfully', { initTime });
         return true;
       }
     } catch (error) {
-      console.warn('MediaPipe failed, falling back to WebGazer:', error);
+      logger.warn('MediaPipe failed, falling back to WebGazer', error);
     }
 
     // Fallback to WebGazer
     try {
-      console.log('Attempting WebGazer initialization...');
+      logger.debug('Attempting WebGazer initialization...');
       const success = await initializeWebGazer();
       if (success) {
         const initTime = Date.now() - initStartTimeRef.current;
@@ -378,11 +379,11 @@ export function useUnifiedEyeTracking() {
         }));
         setIsInitialized(true);
         setInitError('Using WebGazer fallback (lower precision)');
-        console.log('WebGazer initialized successfully in', initTime, 'ms');
+        logger.info('WebGazer initialized successfully', { initTime });
         return true;
       }
     } catch (error) {
-      console.error('WebGazer also failed:', error);
+      logger.error('WebGazer also failed', error);
       const message = 'Both MediaPipe and WebGazer initialization failed';
       setInitError(message);
       setDebugInfo(prev => ({

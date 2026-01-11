@@ -8,6 +8,7 @@ import type {
 } from '@/types/diagnostic';
 import { useAuth } from '@/contexts/AuthContext';
 import { encryptData, decryptData, isCryptoSupported, generateSecureId } from '@/lib/crypto';
+import { logger } from '@/lib/logger';
 
 const SESSION_STORAGE_KEY = 'neuroread_assessment_session';
 const AUTO_SAVE_INTERVAL = 5000; // 5 seconds
@@ -49,12 +50,12 @@ export function useSessionPersistence() {
   // Save encrypted session to localStorage
   const saveSession = useCallback(async (session: AssessmentSession) => {
     if (!user?.id) {
-      console.warn('Cannot save session: user not authenticated');
+      logger.warn('Cannot save session: user not authenticated');
       return;
     }
 
     if (!isCryptoSupported()) {
-      console.error('Web Crypto API not supported - session data cannot be securely stored');
+      logger.error('Web Crypto API not supported - session data cannot be securely stored');
       return;
     }
 
@@ -66,7 +67,7 @@ export function useSessionPersistence() {
       currentSessionRef.current = updated;
     } catch (error) {
       // On encryption failure, do NOT store unencrypted data
-      console.error('Failed to save session securely');
+      logger.error('Failed to save session securely', error);
       localStorage.removeItem(SESSION_STORAGE_KEY);
       throw error;
     }
@@ -101,7 +102,7 @@ export function useSessionPersistence() {
       return session;
     } catch (error) {
       // On decryption failure, clear corrupted/tampered data
-      console.error('Failed to decrypt session - clearing data');
+      logger.error('Failed to decrypt session - clearing data', error);
       localStorage.removeItem(SESSION_STORAGE_KEY);
       return null;
     }
@@ -176,7 +177,7 @@ export function useSessionPersistence() {
       try {
         await updateSession(data);
       } catch (error) {
-        console.error('Auto-save failed');
+        logger.error('Auto-save failed', error);
       }
     }, AUTO_SAVE_INTERVAL);
   }, [updateSession]);

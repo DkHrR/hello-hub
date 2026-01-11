@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 // Define the app roles that match the database enum
 export type AppRole = 'clinician' | 'educator' | 'parent' | 'individual';
@@ -29,7 +30,7 @@ export function useUserRole() {
         .eq('user_id', user.id);
 
       if (error) {
-        console.error('Error fetching user roles:', error);
+        logger.error('Error fetching user roles', error);
         return [];
       }
       

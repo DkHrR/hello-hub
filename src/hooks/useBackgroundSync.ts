@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import {
   getPendingJobs,
   markJobCompleted,
@@ -85,11 +86,11 @@ export function useBackgroundSync() {
         return true;
       }
       
-      console.warn(`Unknown sync job type: ${job.type}`);
+      logger.warn('Unknown sync job type', { type: job.type });
       return true; // Remove unknown jobs
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Sync job ${job.id} failed:`, errorMessage);
+      logger.error(`Sync job failed`, error, { jobId: job.id });
       throw error;
     } finally {
       setState(prev => ({ ...prev, currentJob: null }));
@@ -165,7 +166,7 @@ export function useBackgroundSync() {
       
       await refreshStats();
     } catch (error) {
-      console.error('Sync loop error:', error);
+      logger.error('Sync loop error', error);
       setState(prev => ({ ...prev, isSyncing: false }));
     } finally {
       syncLockRef.current = false;
