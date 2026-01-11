@@ -5,11 +5,11 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 
 // Define the app roles that match the database enum
-export type AppRole = 'clinician' | 'educator' | 'parent' | 'individual';
+export type AppRole = 'admin' | 'clinician' | 'educator' | 'parent';
 
 // Map UI role selection to database role
 export const UI_ROLE_TO_DB_ROLE: Record<string, AppRole> = {
-  individual: 'individual',
+  individual: 'parent', // Map individual to parent role
   school: 'educator',
   pediatrician: 'clinician',
 };
@@ -45,11 +45,13 @@ export function useUserRole() {
     mutationFn: async (role: AppRole) => {
       if (!user) throw new Error('Not authenticated');
       
-      const { error } = await supabase.rpc('set_user_role', { _role: role });
+      // Insert role directly - RLS allows users to insert their own roles
+      const { error } = await supabase
+        .from('user_roles')
+        .insert([{ user_id: user.id, role }]);
       
       if (error) {
-        // Handle specific error for role already set
-        if (error.message.includes('Role already set')) {
+        if (error.message.includes('duplicate') || error.code === '23505') {
           throw new Error('Your role has already been set. Contact support to change it.');
         }
         throw error;
@@ -80,7 +82,7 @@ export function useUserRole() {
   const isClinician = hasRole('clinician');
   const isEducator = hasRole('educator');
   const isParent = hasRole('parent');
-  const isIndividual = hasRole('individual');
+  const isIndividual = hasRole('parent'); // Individual users are mapped to parent role
   
   // Check if user has clinician-level access (clinician or educator can manage students)
   const hasClinicianAccess = isClinician || isEducator;

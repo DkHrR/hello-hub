@@ -66,10 +66,15 @@ export function useStudents() {
       
       const { data, error } = await supabase
         .from('students')
-        .insert({
-          ...validated,
+        .insert([{
+          first_name: validated.first_name,
+          last_name: validated.last_name,
+          date_of_birth: validated.date_of_birth || null,
+          grade_level: validated.grade_level || null,
+          school: validated.school || null,
+          notes: validated.notes || null,
           created_by: user.id,
-        })
+        }])
         .select()
         .single();
 

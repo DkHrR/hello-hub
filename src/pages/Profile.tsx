@@ -45,9 +45,9 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (profile) {
-      setDisplayName(profile.display_name || '');
+      setDisplayName(profile.full_name || '');
       setOrganization(profile.organization || '');
-      setTitle(profile.title || '');
+      setTitle(''); // Title field not in database
     }
   }, [profile]);
 
@@ -65,12 +65,11 @@ export default function ProfilePage() {
       const { error } = await supabase
         .from('profiles')
         .update({
-          display_name: displayName.trim() || null,
+          full_name: displayName.trim() || null,
           organization: organization.trim() || null,
-          title: title.trim() || null,
           updated_at: new Date().toISOString()
         })
-        .eq('user_id', user.id);
+        .eq('id', user.id);
 
       if (error) throw error;
       toast.success('Profile updated successfully');
@@ -240,16 +239,6 @@ export default function ProfilePage() {
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="Enter your name"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title / Role</Label>
-                  <Input
-                    id="title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g., Special Education Teacher"
                   />
                 </div>
                 

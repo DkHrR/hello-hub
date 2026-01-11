@@ -32,30 +32,17 @@ import {
   CheckCircle,
   Plus
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, differenceInYears } from 'date-fns';
+import type { Tables } from '@/integrations/supabase/types';
 
-// Match actual database schema
-interface StudentData {
-  id: string;
-  name: string;
-  age: number;
-  grade: string;
-  notes: string | null;
-  risk_level: string | null;
-  clinician_id: string;
-  created_at: string;
-  updated_at: string;
-}
+type Student = Tables<'students'>;
 
-interface DiagnosticResultData {
+interface AssessmentResultData {
   id: string;
-  session_id: string;
-  overall_risk_level: string | null;
-  dyslexia_probability_index: number | null;
-  adhd_probability_index: number | null;
-  dysgraphia_probability_index: number | null;
-  voice_fluency_score: number | null;
-  eye_total_fixations: number | null;
+  assessment_id: string;
+  overall_risk_score: number | null;
+  reading_fluency_score: number | null;
+  dyslexia_biomarkers: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -64,10 +51,29 @@ export default function StudentProfilePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   
-  const [student, setStudent] = useState<StudentData | null>(null);
-  const [diagnosticResults, setDiagnosticResults] = useState<DiagnosticResultData[]>([]);
+  const [student, setStudent] = useState<Student | null>(null);
+  const [assessmentResults, setAssessmentResults] = useState<AssessmentResultData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Helper to calculate age from date of birth
+  const calculateAge = (dateOfBirth: string | null): number | null => {
+    if (!dateOfBirth) return null;
+    return differenceInYears(new Date(), new Date(dateOfBirth));
+  };
+
+  // Helper to get full name
+  const getFullName = (s: Student): string => {
+    return `${s.first_name} ${s.last_name || ''}`.trim();
+  };
+
+  // Helper to get risk level from assessment results
+  const getRiskLevel = (result: AssessmentResultData | null): string => {
+    if (!result?.overall_risk_score) return 'unknown';
+    if (result.overall_risk_score >= 60) return 'high';
+    if (result.overall_risk_score >= 30) return 'moderate';
+    return 'low';
+  };
 
   useEffect(() => {
     if (!studentId || !user) return;
@@ -88,17 +94,39 @@ export default function StudentProfilePage() {
         return;
       }
 
-      setStudent(studentData as StudentData);
+      setStudent(studentData);
 
-      // Fetch diagnostic results
-      const { data: resultsData } = await supabase
-        .from('diagnostic_results')
-        .select('*')
+      // Fetch assessment results via assessments table
+      const { data: assessmentsData } = await supabase
+        .from('assessments')
+        .select(`
+          id,
+          created_at,
+          assessment_results (
+            id,
+            assessment_id,
+            overall_risk_score,
+            reading_fluency_score,
+            dyslexia_biomarkers,
+            created_at
+          )
+        `)
         .eq('student_id', studentId)
         .order('created_at', { ascending: false });
 
-      if (resultsData) {
-        setDiagnosticResults(resultsData as DiagnosticResultData[]);
+      if (assessmentsData) {
+        // Flatten the results
+        const results: AssessmentResultData[] = assessmentsData
+          .flatMap(a => a.assessment_results || [])
+          .map(r => ({
+            id: r.id,
+            assessment_id: r.assessment_id,
+            overall_risk_score: r.overall_risk_score,
+            reading_fluency_score: r.reading_fluency_score,
+            dyslexia_biomarkers: r.dyslexia_biomarkers as Record<string, unknown> | null,
+            created_at: r.created_at,
+          }));
+        setAssessmentResults(results);
       }
 
       setIsLoading(false);
@@ -107,28 +135,27 @@ export default function StudentProfilePage() {
     fetchStudentData();
   }, [studentId, user, navigate]);
 
-  // Get latest diagnostic result
+  // Get latest assessment result
   const getLatestResult = () => {
-    if (diagnosticResults.length === 0) return null;
-    return diagnosticResults[0];
+    if (assessmentResults.length === 0) return null;
+    return assessmentResults[0];
   };
 
   // Prepare progress chart data
   const getProgressData = () => {
-    return diagnosticResults
+    return assessmentResults
       .slice(0, 10)
       .reverse()
       .map((result, index) => ({
         name: `Test ${index + 1}`,
         date: format(new Date(result.created_at), 'MMM d'),
-        fluency: result.voice_fluency_score ?? 0,
-        dyslexiaRisk: (result.dyslexia_probability_index ?? 0) * 100,
-        adhdRisk: (result.adhd_probability_index ?? 0) * 100,
+        fluency: result.reading_fluency_score ?? 0,
+        riskScore: result.overall_risk_score ?? 0,
       }));
   };
 
-  const getRiskBadge = (riskLevel: string | null) => {
-    if (!riskLevel) return <Badge variant="outline">Unknown</Badge>;
+  const getRiskBadge = (riskLevel: string) => {
+    if (riskLevel === 'unknown') return <Badge variant="outline">Unknown</Badge>;
     if (riskLevel === 'high') return <Badge variant="destructive" className="gap-1"><AlertTriangle className="w-3 h-3" />High Risk</Badge>;
     if (riskLevel === 'moderate') return <Badge variant="outline" className="gap-1 border-warning text-warning">Moderate</Badge>;
     return <Badge variant="secondary" className="gap-1 bg-success/10 text-success"><CheckCircle className="w-3 h-3" />Low Risk</Badge>;
@@ -169,6 +196,8 @@ export default function StudentProfilePage() {
     );
   }
 
+  const studentAge = calculateAge(student.date_of_birth);
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -192,22 +221,24 @@ export default function StudentProfilePage() {
                   <User className="w-8 h-8 text-primary-foreground" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold">{student.name}</h1>
+                  <h1 className="text-3xl font-bold">{getFullName(student)}</h1>
                   <div className="flex items-center gap-4 text-muted-foreground mt-1">
                     <span className="flex items-center gap-1">
                       <School className="w-4 h-4" />
-                      Grade {student.grade}
+                      Grade {student.grade_level || 'N/A'}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      {student.age} years old
-                    </span>
+                    {studentAge && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {studentAge} years old
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                {getRiskBadge(latestResult?.overall_risk_level ?? student.risk_level)}
+                {getRiskBadge(getRiskLevel(latestResult))}
                 <Button variant="default" onClick={() => navigate(`/assessment?studentId=${studentId}`)}>
                   <Plus className="w-4 h-4" />
                   New Assessment
@@ -236,7 +267,7 @@ export default function StudentProfilePage() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Total Tests</p>
-                        <p className="text-2xl font-bold">{diagnosticResults.length}</p>
+                        <p className="text-2xl font-bold">{assessmentResults.length}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -250,7 +281,7 @@ export default function StudentProfilePage() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Fluency Score</p>
-                        <p className="text-2xl font-bold">{latestResult?.voice_fluency_score ?? 'N/A'}</p>
+                        <p className="text-2xl font-bold">{latestResult?.reading_fluency_score ?? 'N/A'}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -263,10 +294,10 @@ export default function StudentProfilePage() {
                         <Brain className="w-5 h-5 text-warning" />
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">Dyslexia Risk</p>
+                        <p className="text-sm text-muted-foreground">Risk Score</p>
                         <p className="text-2xl font-bold">
-                          {latestResult?.dyslexia_probability_index 
-                            ? `${Math.round(latestResult.dyslexia_probability_index * 100)}%` 
+                          {latestResult?.overall_risk_score 
+                            ? `${Math.round(latestResult.overall_risk_score)}%` 
                             : 'N/A'}
                         </p>
                       </div>
@@ -281,10 +312,10 @@ export default function StudentProfilePage() {
                         <Brain className="w-5 h-5 text-info" />
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">ADHD Risk</p>
-                        <p className="text-2xl font-bold">
-                          {latestResult?.adhd_probability_index 
-                            ? `${Math.round(latestResult.adhd_probability_index * 100)}%` 
+                        <p className="text-sm text-muted-foreground">Latest</p>
+                        <p className="text-lg font-bold">
+                          {latestResult 
+                            ? format(new Date(latestResult.created_at), 'MMM d')
                             : 'N/A'}
                         </p>
                       </div>
@@ -344,10 +375,10 @@ export default function StudentProfilePage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Assessment History</CardTitle>
-                  <CardDescription>All diagnostic results for this student</CardDescription>
+                  <CardDescription>All assessment results for this student</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {diagnosticResults.length === 0 ? (
+                  {assessmentResults.length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
                       <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>No assessments yet</p>
@@ -361,7 +392,7 @@ export default function StudentProfilePage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {diagnosticResults.map((result) => (
+                      {assessmentResults.map((result) => (
                         <div
                           key={result.id}
                           className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors"
@@ -369,8 +400,8 @@ export default function StudentProfilePage() {
                           <div className="flex items-center justify-between">
                             <div>
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline">{result.session_id}</Badge>
-                                {getRiskBadge(result.overall_risk_level)}
+                                <Badge variant="outline">{result.assessment_id.slice(0, 8)}</Badge>
+                                {getRiskBadge(getRiskLevel(result))}
                               </div>
                               <p className="text-sm text-muted-foreground mt-1">
                                 {format(new Date(result.created_at), 'PPp')}
@@ -378,7 +409,7 @@ export default function StudentProfilePage() {
                             </div>
                             <div className="text-right">
                               <p className="text-sm text-muted-foreground">Fluency</p>
-                              <p className="text-lg font-bold">{result.voice_fluency_score ?? 'N/A'}</p>
+                              <p className="text-lg font-bold">{result.reading_fluency_score ?? 'N/A'}</p>
                             </div>
                           </div>
                         </div>
@@ -424,17 +455,10 @@ export default function StudentProfilePage() {
                         />
                         <Area
                           type="monotone"
-                          dataKey="dyslexiaRisk"
+                          dataKey="riskScore"
                           stroke="hsl(var(--destructive))"
                           fill="hsl(var(--destructive) / 0.2)"
-                          name="Dyslexia Risk %"
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="adhdRisk"
-                          stroke="hsl(var(--warning))"
-                          fill="hsl(var(--warning) / 0.2)"
-                          name="ADHD Risk %"
+                          name="Risk Score %"
                         />
                       </AreaChart>
                     </ResponsiveContainer>

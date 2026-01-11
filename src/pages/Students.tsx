@@ -15,24 +15,40 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, UserPlus, Users, Eye } from 'lucide-react';
+import { differenceInYears } from 'date-fns';
+import type { Tables } from '@/integrations/supabase/types';
 
-const GRADES = ['K', '1st', '2nd', '3rd', '4th', '5th'];
+type Student = Tables<'students'>;
+
+const GRADES = ['K', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
 
 export default function Students() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingStudent, setEditingStudent] = useState<any>(null);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Form state - aligned with database schema (name, age, grade)
+  // Form state - aligned with database schema
   const [formData, setFormData] = useState({
-    name: '',
-    age: '',
-    grade: '',
+    first_name: '',
+    last_name: '',
+    date_of_birth: '',
+    grade_level: '',
     notes: '',
   });
+
+  // Helper to calculate age
+  const calculateAge = (dateOfBirth: string | null): number | null => {
+    if (!dateOfBirth) return null;
+    return differenceInYears(new Date(), new Date(dateOfBirth));
+  };
+
+  // Helper to get full name
+  const getFullName = (student: Student): string => {
+    return `${student.first_name} ${student.last_name || ''}`.trim();
+  };
 
   // Fetch students
   const { data: students, isLoading } = useQuery({
@@ -44,17 +60,24 @@ export default function Students() {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data;
+      return data as Student[];
     },
     enabled: !!user
   });
 
   // Create mutation
   const createMutation = useMutation({
-    mutationFn: async (student: any) => {
+    mutationFn: async (student: Omit<typeof formData, ''> & { created_by: string }) => {
       const { data, error } = await supabase
         .from('students')
-        .insert([student])
+        .insert([{
+          first_name: student.first_name,
+          last_name: student.last_name,
+          date_of_birth: student.date_of_birth || null,
+          grade_level: student.grade_level || null,
+          notes: student.notes || null,
+          created_by: student.created_by,
+        }])
         .select()
         .single();
       
@@ -74,10 +97,16 @@ export default function Students() {
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: any }) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<typeof formData> }) => {
       const { data, error } = await supabase
         .from('students')
-        .update(updates)
+        .update({
+          first_name: updates.first_name,
+          last_name: updates.last_name,
+          date_of_birth: updates.date_of_birth || null,
+          grade_level: updates.grade_level || null,
+          notes: updates.notes || null,
+        })
         .eq('id', id)
         .select()
         .single();
@@ -118,26 +147,24 @@ export default function Students() {
 
   const resetForm = () => {
     setFormData({
-      name: '',
-      age: '',
-      grade: '',
+      first_name: '',
+      last_name: '',
+      date_of_birth: '',
+      grade_level: '',
       notes: '',
     });
   };
 
   const handleCreate = () => {
     if (!user) return;
-    if (!formData.name || !formData.age || !formData.grade) {
+    if (!formData.first_name || !formData.last_name) {
       toast.error('Please fill in the required fields');
       return;
     }
     
     createMutation.mutate({
-      name: formData.name,
-      age: parseInt(formData.age, 10),
-      grade: formData.grade,
-      notes: formData.notes || null,
-      clinician_id: user.id
+      ...formData,
+      created_by: user.id
     });
   };
 
@@ -146,21 +173,17 @@ export default function Students() {
     
     updateMutation.mutate({
       id: editingStudent.id,
-      updates: {
-        name: formData.name,
-        age: parseInt(formData.age, 10),
-        grade: formData.grade,
-        notes: formData.notes || null,
-      }
+      updates: formData
     });
   };
 
-  const openEditDialog = (student: any) => {
+  const openEditDialog = (student: Student) => {
     setEditingStudent(student);
     setFormData({
-      name: student.name,
-      age: student.age?.toString() || '',
-      grade: student.grade || '',
+      first_name: student.first_name,
+      last_name: student.last_name || '',
+      date_of_birth: student.date_of_birth || '',
+      grade_level: student.grade_level || '',
       notes: student.notes || '',
     });
   };
@@ -212,33 +235,41 @@ export default function Students() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Full Name *</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="Student's full name"
-                    />
-                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="age">Age *</Label>
+                      <Label htmlFor="first_name">First Name *</Label>
                       <Input
-                        id="age"
-                        type="number"
-                        min="4"
-                        max="18"
-                        value={formData.age}
-                        onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                        placeholder="Age"
+                        id="first_name"
+                        value={formData.first_name}
+                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                        placeholder="First name"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="grade">Grade *</Label>
+                      <Label htmlFor="last_name">Last Name *</Label>
+                      <Input
+                        id="last_name"
+                        value={formData.last_name}
+                        onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                        placeholder="Last name"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="date_of_birth">Date of Birth</Label>
+                      <Input
+                        id="date_of_birth"
+                        type="date"
+                        value={formData.date_of_birth}
+                        onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="grade_level">Grade</Label>
                       <Select
-                        value={formData.grade}
-                        onValueChange={(value) => setFormData({ ...formData, grade: value })}
+                        value={formData.grade_level}
+                        onValueChange={(value) => setFormData({ ...formData, grade_level: value })}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select grade" />
@@ -268,7 +299,7 @@ export default function Students() {
                   <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
                   <Button 
                     onClick={handleCreate}
-                    disabled={!formData.name || !formData.age || !formData.grade || createMutation.isPending}
+                    disabled={!formData.first_name || !formData.last_name || createMutation.isPending}
                   >
                     {createMutation.isPending ? 'Adding...' : 'Add Student'}
                   </Button>
@@ -320,10 +351,10 @@ export default function Students() {
                     {students.map((student) => (
                       <TableRow key={student.id}>
                         <TableCell className="font-medium">
-                          {student.name}
+                          {getFullName(student)}
                         </TableCell>
-                        <TableCell>{student.age || '-'}</TableCell>
-                        <TableCell>{student.grade || '-'}</TableCell>
+                        <TableCell>{calculateAge(student.date_of_birth) ?? '-'}</TableCell>
+                        <TableCell>{student.grade_level || '-'}</TableCell>
                         <TableCell>{new Date(student.created_at).toLocaleDateString()}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -362,18 +393,24 @@ export default function Students() {
                 <DialogTitle>Edit Student</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Full Name *</Label>
-                  <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>First Name *</Label>
+                    <Input value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Last Name *</Label>
+                    <Input value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Age *</Label>
-                    <Input type="number" min="4" max="18" value={formData.age} onChange={(e) => setFormData({ ...formData, age: e.target.value })} />
+                    <Label>Date of Birth</Label>
+                    <Input type="date" value={formData.date_of_birth} onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })} />
                   </div>
                   <div className="space-y-2">
-                    <Label>Grade *</Label>
-                    <Select value={formData.grade} onValueChange={(value) => setFormData({ ...formData, grade: value })}>
+                    <Label>Grade</Label>
+                    <Select value={formData.grade_level} onValueChange={(value) => setFormData({ ...formData, grade_level: value })}>
                       <SelectTrigger><SelectValue placeholder="Select grade" /></SelectTrigger>
                       <SelectContent>
                         {GRADES.map((grade) => (<SelectItem key={grade} value={grade}>{grade}</SelectItem>))}
