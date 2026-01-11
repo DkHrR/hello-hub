@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import { useUserRole } from './useUserRole';
 
 // Zod schema for profile update validation
 const profileUpdateSchema = z.object({
@@ -31,6 +32,14 @@ export interface ProfileUpdate {
 export function useProfile() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  
+  // Use the secure server-side role hook
+  const { 
+    isClinician, 
+    isParent, 
+    hasClinicianAccess, 
+    isLoading: isRoleLoading 
+  } = useUserRole();
 
   const profileQuery = useQuery({
     queryKey: ['profile', user?.id],
@@ -79,19 +88,14 @@ export function useProfile() {
     },
   });
 
-  // Role detection based on profile organization field
-  const isClinician = profileQuery.data?.organization?.toLowerCase().includes('pediatrician') || 
-                      profileQuery.data?.title?.toLowerCase().includes('clinician') ||
-                      true; // Default to clinician role for this app
-  
-  const isParent = profileQuery.data?.organization?.toLowerCase().includes('parent') || false;
-
   return {
     profile: profileQuery.data,
-    isLoading: profileQuery.isLoading,
+    isLoading: profileQuery.isLoading || isRoleLoading,
     isError: profileQuery.isError,
     updateProfile,
+    // Role checks now come from server-side user_roles table
     isClinician,
     isParent,
+    hasClinicianAccess,
   };
 }

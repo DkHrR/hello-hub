@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RoleSelection } from '@/components/auth/RoleSelection';
 import { toast } from 'sonner';
 import { Brain, Mail, Lock, User, Loader2, ArrowLeft } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { useUserRole, UI_ROLE_TO_DB_ROLE, type AppRole } from '@/hooks/useUserRole';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string()
@@ -26,6 +26,7 @@ type UserRole = 'individual' | 'school' | 'pediatrician';
 export default function AuthPage() {
   const navigate = useNavigate();
   const { user, signIn, signUp, signInWithMagicLink, signInWithGoogle, resetPassword, loading, profile } = useAuth();
+  const { hasAnyRole, setRole, isSettingRole, isLoading: isRoleLoading } = useUserRole();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [email, setEmail] = useState('');
@@ -37,9 +38,9 @@ export default function AuthPage() {
   const [pendingUser, setPendingUser] = useState<{ id: string; email: string; name: string } | null>(null);
 
   useEffect(() => {
-    if (user && !loading) {
-      // Check if user has selected a role (stored in profile organization field)
-      if (profile?.organization) {
+    if (user && !loading && !isRoleLoading) {
+      // Check if user has a role in the user_roles table (server-side check)
+      if (hasAnyRole()) {
         // User has a role, go to dashboard
         navigate('/dashboard');
       } else if (user) {
@@ -52,7 +53,7 @@ export default function AuthPage() {
         setShowRoleSelection(true);
       }
     }
-  }, [user, loading, profile, navigate]);
+  }, [user, loading, isRoleLoading, hasAnyRole, profile, navigate]);
 
   const validateEmail = (value: string) => {
     try {
@@ -83,30 +84,24 @@ export default function AuthPage() {
   const handleRoleSelect = async (role: UserRole) => {
     if (!pendingUser) return;
     
-    setIsSubmitting(true);
+    // Map UI role to database role
+    const dbRole: AppRole = UI_ROLE_TO_DB_ROLE[role];
     
-    // Map role to display text
+    // Map role to display text for toast
     const roleDisplayMap: Record<UserRole, string> = {
       individual: 'Individual',
       school: 'School (India K-12)',
       pediatrician: 'Pediatrician'
     };
     
-    // Update profile with selected role using user_id
-    const { error } = await supabase
-      .from('profiles')
-      .update({ 
-        organization: roleDisplayMap[role]
-      })
-      .eq('user_id', pendingUser.id);
-    
-    setIsSubmitting(false);
-    
-    if (error) {
-      toast.error('Failed to save role selection');
-    } else {
+    try {
+      // Use the secure RPC function to set role server-side
+      await setRole(dbRole);
       toast.success(`Welcome! You're registered as ${roleDisplayMap[role]}`);
       navigate('/dashboard');
+    } catch (error) {
+      // Error is already handled by the mutation
+      console.error('Role selection failed:', error);
     }
   };
 

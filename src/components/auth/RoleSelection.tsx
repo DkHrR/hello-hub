@@ -118,7 +118,7 @@ export function RoleSelection({ onRoleSelect, userName }: RoleSelectionProps) {
           <ArrowRight className="w-5 h-5" />
         </Button>
         <p className="text-xs text-muted-foreground mt-4">
-          You can change your role later in settings
+          Role selection is permanent. Contact support if you need to change it.
         </p>
       </div>
     </motion.div>
