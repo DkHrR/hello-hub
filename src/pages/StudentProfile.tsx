@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { EmailReportDialog } from '@/components/email/EmailReportDialog';
 import {
   AreaChart,
   Area,
@@ -29,7 +30,8 @@ import {
   Brain,
   AlertTriangle,
   CheckCircle,
-  Plus
+  Plus,
+  Mail
 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Tables } from '@/integrations/supabase/types';
@@ -46,6 +48,8 @@ export default function StudentProfilePage() {
   const [diagnosticResults, setDiagnosticResults] = useState<DiagnosticResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!studentId || !user) return;
@@ -359,13 +363,26 @@ export default function StudentProfilePage() {
                                 {format(new Date(result.created_at), 'PPp')}
                               </p>
                             </div>
-                            <div className="text-right">
-                              <p className="text-sm text-muted-foreground">Dyslexia Risk</p>
-                              <p className="text-lg font-bold">
-                                {result.dyslexia_probability_index 
-                                  ? `${Math.round(Number(result.dyslexia_probability_index) * 100)}%`
-                                  : 'N/A'}
-                              </p>
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="text-sm text-muted-foreground">Dyslexia Risk</p>
+                                <p className="text-lg font-bold">
+                                  {result.dyslexia_probability_index 
+                                    ? `${Math.round(Number(result.dyslexia_probability_index) * 100)}%`
+                                    : 'N/A'}
+                                </p>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAssessmentId(result.id);
+                                  setEmailDialogOpen(true);
+                                }}
+                              >
+                                <Mail className="w-4 h-4 mr-1" />
+                                Email
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -427,6 +444,16 @@ export default function StudentProfilePage() {
       </main>
 
       <Footer />
+
+      {/* Email Report Dialog */}
+      {selectedAssessmentId && student && (
+        <EmailReportDialog
+          open={emailDialogOpen}
+          onOpenChange={setEmailDialogOpen}
+          assessmentId={selectedAssessmentId}
+          studentName={student.name}
+        />
+      )}
     </div>
   );
 }
