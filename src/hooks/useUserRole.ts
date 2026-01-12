@@ -5,11 +5,11 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 
 // Define the app roles that match the database enum
-export type AppRole = 'admin' | 'clinician' | 'educator' | 'parent';
+export type AppRole = 'clinician' | 'educator' | 'parent' | 'individual';
 
 // Map UI role selection to database role
 export const UI_ROLE_TO_DB_ROLE: Record<string, AppRole> = {
-  individual: 'parent', // Map individual to parent role
+  individual: 'individual',
   school: 'educator',
   pediatrician: 'clinician',
 };

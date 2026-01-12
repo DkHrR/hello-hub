@@ -45,9 +45,9 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (profile) {
-      setDisplayName(profile.full_name || '');
+      setDisplayName(profile.display_name || '');
       setOrganization(profile.organization || '');
-      setTitle(''); // Title field not in database
+      setTitle(profile.title || '');
     }
   }, [profile]);
 
@@ -65,11 +65,12 @@ export default function ProfilePage() {
       const { error } = await supabase
         .from('profiles')
         .update({
-          full_name: displayName.trim() || null,
+          display_name: displayName.trim() || null,
           organization: organization.trim() || null,
+          title: title.trim() || null,
           updated_at: new Date().toISOString()
         })
-        .eq('id', user.id);
+        .eq('user_id', user.id);
 
       if (error) throw error;
       toast.success('Profile updated successfully');

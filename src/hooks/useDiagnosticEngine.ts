@@ -227,7 +227,7 @@ export function useDiagnosticEngine() {
     // Insert directly into diagnostic_results table
     const { data, error } = await supabase
       .from('diagnostic_results')
-      .insert({
+      .insert([{
         clinician_id: user.id,
         user_id: studentId ? null : user.id, // self-assessment if no student
         student_id: studentId,
@@ -253,7 +253,7 @@ export function useDiagnosticEngine() {
         voice_prosody_score: result.voice.prosodyScore,
         voice_stall_count: result.voice.stallCount || 0,
         voice_avg_stall_duration: result.voice.averageStallDuration || 0,
-        voice_stall_events: result.voice.stallEvents || [],
+        voice_stall_events: (result.voice.stallEvents || []) as unknown as any,
         // Handwriting metrics
         handwriting_reversal_count: result.handwriting.reversalCount,
         handwriting_letter_crowding: result.handwriting.letterCrowding,
@@ -266,7 +266,7 @@ export function useDiagnosticEngine() {
         // Raw data
         fixation_data: safeFixations,
         saccade_data: safeSaccades,
-      })
+      }])
       .select()
       .single();
 

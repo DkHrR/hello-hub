@@ -1,6 +1,6 @@
 /**
  * Parent Access Hook
- * Manages parent portal access via parent_access_tokens table
+ * Manages parent portal access via parent_student_links table
  */
 
 import { useState, useCallback } from 'react';
@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import type { Tables } from '@/integrations/supabase/types';
 
-type ParentAccessToken = Tables<'parent_access_tokens'>;
+type ParentStudentLink = Tables<'parent_student_links'>;
 
 interface CreateLinkParams {
   studentId: string;
@@ -18,7 +18,7 @@ interface CreateLinkParams {
 
 export function useParentAccess() {
   const { toast } = useToast();
-  const [tokens, setTokens] = useState<ParentAccessToken[]>([]);
+  const [links, setLinks] = useState<ParentStudentLink[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,8 +33,8 @@ export function useParentAccess() {
 
   const createLink = useCallback(async ({
     studentId,
-    expiresInDays = 30,
-  }: CreateLinkParams): Promise<ParentAccessToken | null> => {
+    expiresInDays = 7,
+  }: CreateLinkParams): Promise<ParentStudentLink | null> => {
     setIsLoading(true);
     setError(null);
 
@@ -47,11 +47,11 @@ export function useParentAccess() {
       expiresAt.setDate(expiresAt.getDate() + expiresInDays);
 
       const { data, error: insertError } = await supabase
-        .from('parent_access_tokens')
+        .from('parent_student_links')
         .insert({
           student_id: studentId,
           access_code: accessCode,
-          created_by: user.id,
+          linked_by: user.id,
           expires_at: expiresAt.toISOString(),
         })
         .select()
@@ -79,20 +79,20 @@ export function useParentAccess() {
     }
   }, [toast]);
 
-  const fetchTokensForStudent = useCallback(async (studentId: string) => {
+  const fetchLinksForStudent = useCallback(async (studentId: string) => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('parent_access_tokens')
+        .from('parent_student_links')
         .select('*')
         .eq('student_id', studentId)
-        .order('created_at', { ascending: false });
+        .order('linked_at', { ascending: false });
 
       if (error) throw error;
-      setTokens(data || []);
+      setLinks(data || []);
     } catch (err) {
-      logger.error('Error fetching tokens', err);
-      setTokens([]);
+      logger.error('Error fetching links', err);
+      setLinks([]);
     } finally {
       setIsLoading(false);
     }
@@ -133,42 +133,15 @@ export function useParentAccess() {
     return `${baseUrl}/parent-portal?code=${accessCode}`;
   }, []);
 
-  const revokeToken = useCallback(async (tokenId: string): Promise<boolean> => {
-    try {
-      const { error } = await supabase
-        .from('parent_access_tokens')
-        .delete()
-        .eq('id', tokenId);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Access revoked',
-        description: 'The parent access code has been revoked.',
-      });
-
-      return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to revoke access';
-      toast({
-        title: 'Error',
-        description: message,
-        variant: 'destructive',
-      });
-      return false;
-    }
-  }, [toast]);
-
   return {
-    tokens,
+    links,
     isLoading,
     error,
     createLink,
-    fetchTokensForStudent,
+    fetchLinksForStudent,
     validateAccessCode,
     getPortalData,
     getShareableUrl,
     generateAccessCode,
-    revokeToken,
   };
 }

@@ -217,7 +217,7 @@ export default function DashboardPage() {
                   // Individual user stats
                   [
                     { label: 'Total Assessments', value: selfAssessments.length.toString(), icon: FileText },
-                    { label: 'Latest Risk Score', value: selfAssessments[0]?.assessment_results?.[0]?.overall_risk_score ? `${Math.round(selfAssessments[0].assessment_results[0].overall_risk_score)}%` : 'No data', icon: AlertTriangle },
+                    { label: 'Latest Risk Score', value: selfAssessments[0]?.overall_risk_level ? selfAssessments[0].overall_risk_level : 'No data', icon: AlertTriangle },
                     { label: 'Last Assessed', value: selfAssessments[0] ? new Date(selfAssessments[0].created_at).toLocaleDateString() : 'Never', icon: Clock },
                   ].map((stat) => (
                     <Card key={stat.label}>

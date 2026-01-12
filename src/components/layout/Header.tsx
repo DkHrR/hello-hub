@@ -32,7 +32,7 @@ export function Header() {
   };
 
   // Get display name from profile or email
-  const displayName = profile?.full_name || user?.email?.split('@')[0] || 'Account';
+  const displayName = profile?.display_name || user?.email?.split('@')[0] || 'Account';
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">

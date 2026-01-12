@@ -12,7 +12,6 @@ import {
   getOfflineStats,
   saveOfflineResult,
   OfflineResult,
-  SyncQueueItem,
 } from '@/lib/offlineStorage';
 
 interface SyncStatus {
@@ -98,57 +97,27 @@ export function useOfflineSync() {
     if (!user) return false;
 
     try {
-      // First, create an assessment record
-      const { data: assessment, error: assessmentError } = await supabase
-        .from('assessments')
+      // Insert directly into diagnostic_results table
+      const { error } = await supabase
+        .from('diagnostic_results')
         .insert({
-          assessor_id: user.id,
-          student_id: result.studentId!,
-          assessment_type: 'comprehensive',
-          status: 'completed',
-          started_at: result.createdAt,
-          completed_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (assessmentError) throw assessmentError;
-
-      // Then create the assessment result
-      const { error: resultError } = await supabase
-        .from('assessment_results')
-        .insert({
-          assessment_id: assessment.id,
-          overall_risk_score: result.results?.overallRiskLevel === 'high' ? 80 :
-                              result.results?.overallRiskLevel === 'medium' ? 50 : 20,
-          reading_fluency_score: result.results?.readingFluency || 0,
-          phonological_awareness_score: result.results?.phonologicalScore || 0,
-          attention_score: result.results?.attentionScore || 0,
-          visual_processing_score: result.results?.visualScore || 0,
-          raw_data: {
-            eyeTracking: result.eyeTrackingData || {},
-            syncedAt: new Date().toISOString(),
-            offlineId: result.id,
-          },
+          clinician_id: user.id,
+          user_id: result.studentId ? null : user.id,
+          student_id: result.studentId || null,
+          session_id: result.id,
+          dyslexia_probability_index: result.results?.dyslexiaProbabilityIndex || 0,
+          adhd_probability_index: result.results?.adhdProbabilityIndex || 0,
+          dysgraphia_probability_index: result.results?.dysgraphiaProbabilityIndex || 0,
+          overall_risk_level: result.results?.overallRiskLevel || 'low',
+          eye_total_fixations: result.eyeTrackingData?.totalFixations || 0,
+          eye_avg_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
+          eye_regression_count: result.eyeTrackingData?.regressionCount || 0,
+          eye_chaos_index: result.eyeTrackingData?.chaosIndex || 0,
+          fixation_data: result.eyeTrackingData?.fixations || [],
+          saccade_data: result.eyeTrackingData?.saccades || [],
         });
 
-      if (resultError) throw resultError;
-
-      // Save eye tracking data if available
-      if (result.eyeTrackingData) {
-        await supabase
-          .from('eye_tracking_data')
-          .insert({
-            assessment_id: assessment.id,
-            fixation_points: result.eyeTrackingData?.fixations || [],
-            saccade_patterns: result.eyeTrackingData?.saccades || [],
-            saccade_count: result.eyeTrackingData?.saccadeCount || 0,
-            regression_count: result.eyeTrackingData?.regressionCount || 0,
-            average_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
-            reading_speed_wpm: result.eyeTrackingData?.readingSpeedWpm || 0,
-          });
-      }
-
+      if (error) throw error;
       return true;
     } catch (error) {
       logger.error('Failed to sync result', error);
@@ -203,9 +172,6 @@ export function useOfflineSync() {
       let synced = 0;
 
       for (const result of unsyncedResults) {
-        // Skip results without studentId as they require a student
-        if (!result.studentId) continue;
-        
         const success = await syncAssessmentResult(result);
         if (success) {
           await markResultSynced(result.id);
