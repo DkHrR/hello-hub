@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 // CORS configuration - restrict to allowed origins
 const ALLOWED_ORIGINS = [
@@ -77,119 +78,40 @@ function isValidEmail(email: string): boolean {
   return typeof email === 'string' && email.length <= 254 && EMAIL_REGEX.test(email);
 }
 
-// Create JWT for Google API authentication
-async function createGoogleJWT(serviceAccountKey: string): Promise<string> {
-  const keyData = JSON.parse(serviceAccountKey);
-  const now = Math.floor(Date.now() / 1000);
-  
-  const header = {
-    alg: "RS256",
-    typ: "JWT",
-  };
-  
-  const payload = {
-    iss: keyData.client_email,
-    scope: "https://www.googleapis.com/auth/gmail.send",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-    sub: Deno.env.get("GMAIL_SENDER_EMAIL"),
-  };
-  
-  const encoder = new TextEncoder();
-  const headerB64 = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  
-  const signatureInput = `${headerB64}.${payloadB64}`;
-  
-  // Import the private key
-  const pemContents = keyData.private_key
-    .replace("-----BEGIN PRIVATE KEY-----", "")
-    .replace("-----END PRIVATE KEY-----", "")
-    .replace(/\n/g, "");
-  
-  const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8",
-    binaryKey,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    cryptoKey,
-    encoder.encode(signatureInput)
-  );
-  
-  const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  
-  return `${headerB64}.${payloadB64}.${signatureB64}`;
-}
-
-// Get access token from Google
-async function getGoogleAccessToken(serviceAccountKey: string): Promise<string> {
-  const jwt = await createGoogleJWT(serviceAccountKey);
-  
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-  
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to get access token: ${error}`);
-  }
-  
-  const data = await response.json();
-  return data.access_token;
-}
-
-// Send email via Gmail API
-async function sendGmailEmail(
-  accessToken: string,
-  senderEmail: string,
+// Send email via SMTP
+async function sendSmtpEmail(
   to: string,
   subject: string,
   html: string
 ): Promise<void> {
-  const emailContent = [
-    `From: Neuro-Read X <${senderEmail}>`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: text/html; charset=utf-8`,
-    ``,
-    html,
-  ].join("\r\n");
+  const smtpUser = Deno.env.get("GMAIL_SENDER_EMAIL");
+  const smtpPassword = Deno.env.get("SMTP_PASSWORD");
   
-  const encodedEmail = btoa(unescape(encodeURIComponent(emailContent)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-  
-  const response = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages/send`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+  if (!smtpUser || !smtpPassword) {
+    throw new Error("SMTP configuration missing. Please set GMAIL_SENDER_EMAIL and SMTP_PASSWORD secrets.");
+  }
+
+  const client = new SMTPClient({
+    connection: {
+      hostname: "smtp.gmail.com",
+      port: 465,
+      tls: true,
+      auth: {
+        username: smtpUser,
+        password: smtpPassword,
       },
-      body: JSON.stringify({ raw: encodedEmail }),
-    }
-  );
-  
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to send email: ${error}`);
+    },
+  });
+
+  try {
+    await client.send({
+      from: `Neuro-Read X <${smtpUser}>`,
+      to: to,
+      subject: subject,
+      html: html,
+    });
+  } finally {
+    await client.close();
   }
 }
 
@@ -370,13 +292,6 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const serviceAccountKey = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_KEY");
-    const senderEmail = Deno.env.get("GMAIL_SENDER_EMAIL");
-    
-    if (!serviceAccountKey || !senderEmail) {
-      throw new Error("Email configuration missing. Please set GOOGLE_SERVICE_ACCOUNT_KEY and GMAIL_SENDER_EMAIL secrets.");
-    }
-
     const { to, subject, html, type, assessmentId, studentName }: EmailRequest = await req.json();
 
     // 3. Validate recipient email
@@ -419,12 +334,11 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Get access token and send email
-    const accessToken = await getGoogleAccessToken(serviceAccountKey);
-    await sendGmailEmail(accessToken, senderEmail, to, emailSubject || "Neuro-Read X Notification", emailHtml);
+    // Send email via SMTP
+    await sendSmtpEmail(to, emailSubject || "Neuro-Read X Notification", emailHtml);
 
     // Log success without sensitive details
-    console.log('Email sent successfully');
+    console.log('Email sent successfully via SMTP');
 
     return new Response(
       JSON.stringify({ success: true, message: "Email sent successfully" }),
