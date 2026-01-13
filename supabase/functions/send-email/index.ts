@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 // CORS configuration - restrict to allowed origins
@@ -261,7 +261,8 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     // 1. Verify authentication
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    if (!authHeader?.startsWith('Bearer ')) {
+      console.log('Missing or invalid Authorization header format');
       return new Response(
         JSON.stringify({ error: 'Authentication required' }),
         { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -269,15 +270,38 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Create authenticated Supabase client
-    const supabaseAuth = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.log('Missing Supabase configuration');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false
+      }
+    });
 
     // Verify the user's token
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
-    if (authError || !user) {
+    if (authError) {
+      console.log('Auth error occurred:', authError.message);
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    
+    if (!user) {
+      console.log('No user found in token');
       return new Response(
         JSON.stringify({ error: 'Invalid authentication' }),
         { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
