@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
@@ -15,7 +15,7 @@ interface SendEmailOptions {
 export function useEmailService() {
   const [isSending, setIsSending] = useState(false);
 
-  const sendEmail = async (options: SendEmailOptions): Promise<boolean> => {
+  const sendEmail = useCallback(async (options: SendEmailOptions): Promise<boolean> => {
     setIsSending(true);
     
     try {
@@ -36,9 +36,9 @@ export function useEmailService() {
     } finally {
       setIsSending(false);
     }
-  };
+  }, []);
 
-  const sendAssessmentReport = async (
+  const sendAssessmentReport = useCallback(async (
     recipientEmail: string,
     assessmentId: string,
     studentName: string
@@ -49,9 +49,9 @@ export function useEmailService() {
       assessmentId,
       studentName,
     });
-  };
+  }, [sendEmail]);
 
-  const sendWelcomeEmail = async (
+  const sendWelcomeEmail = useCallback(async (
     recipientEmail: string,
     userName: string
   ): Promise<boolean> => {
@@ -60,15 +60,15 @@ export function useEmailService() {
       type: 'welcome',
       studentName: userName,
     });
-  };
+  }, [sendEmail]);
 
-  const sendCustomEmail = async (
+  const sendCustomEmail = useCallback(async (
     to: string,
     subject: string,
     html: string
   ): Promise<boolean> => {
     return sendEmail({ to, subject, html });
-  };
+  }, [sendEmail]);
 
   return {
     isSending,
