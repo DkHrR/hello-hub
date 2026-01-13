@@ -3,6 +3,7 @@ import { useBackgroundSync } from '@/hooks/useBackgroundSync';
 import { getCachedStudents, cacheStudent, CachedStudent } from '@/lib/offlineStorage';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { logger } from '@/lib/logger';
 
 interface OfflineContextType {
   isOnline: boolean;
@@ -74,7 +75,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
         await loadCachedStudents();
       }
     } catch (error) {
-      console.error('Failed to cache students:', error);
+      logger.error('Failed to cache students', error);
     }
   };
 

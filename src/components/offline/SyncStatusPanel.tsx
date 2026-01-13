@@ -38,6 +38,7 @@ import {
 } from '@/lib/offlineStorage';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
+import { logger } from '@/lib/logger';
 
 export function SyncStatusPanel() {
   const { status, forceSync } = useOfflineSync();
@@ -59,7 +60,7 @@ export function SyncStatusPanel() {
       setOfflineResults(results);
       setPendingAssessments(pending);
     } catch (error) {
-      console.error('Failed to load offline data:', error);
+      logger.error('Failed to load offline data', error);
     } finally {
       setIsLoading(false);
     }

@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { EmailReportDialog } from '@/components/email/EmailReportDialog';
+import { logger } from '@/lib/logger';
 import {
   AreaChart,
   Area,
@@ -65,7 +66,7 @@ export default function StudentProfilePage() {
         .single();
 
       if (studentError) {
-        console.error('Error fetching student:', studentError);
+        logger.error('Error fetching student', studentError);
         navigate('/students');
         return;
       }

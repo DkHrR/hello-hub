@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 interface SendEmailOptions {
   to: string;
@@ -29,8 +30,8 @@ export function useEmailService() {
       toast.success('Email sent successfully!');
       return true;
     } catch (error: any) {
-      console.error('Failed to send email:', error);
-      toast.error(error.message || 'Failed to send email');
+      logger.error('Failed to send email', error);
+      toast.error(logger.getUserMessage(error, 'Failed to send email'));
       return false;
     } finally {
       setIsSending(false);

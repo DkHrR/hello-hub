@@ -1,10 +1,43 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// CORS configuration - restrict to allowed origins
+const ALLOWED_ORIGINS = [
+  "https://lovable.dev",
+  "https://www.lovable.dev",
+  "https://lovable.app",
+  "https://www.lovable.app",
+];
+
+// Check if origin is a Lovable preview URL pattern
+function isLovablePreviewOrigin(origin: string): boolean {
+  return /^https:\/\/[a-z0-9-]+\.lovable\.app$/.test(origin) ||
+         /^https:\/\/[a-z0-9-]+\.lovableproject\.com$/.test(origin);
+}
+
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  // Allow localhost in development
+  if (origin?.startsWith("http://localhost:") || origin?.startsWith("http://127.0.0.1:")) {
+    return {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    };
+  }
+  
+  // Allow known origins or Lovable preview URLs
+  if (origin && (ALLOWED_ORIGINS.includes(origin) || isLovablePreviewOrigin(origin))) {
+    return {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    };
+  }
+  
+  // Default to most restrictive
+  return {
+    "Access-Control-Allow-Origin": "https://lovable.dev",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  };
+}
 
 interface EmailRequest {
   to: string;
@@ -296,6 +329,9 @@ function getWelcomeTemplate(userName: string): string {
 }
 
 const handler = async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+  const corsHeaders = getCorsHeaders(origin);
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

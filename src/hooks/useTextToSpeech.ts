@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { logger } from '@/lib/logger';
 
 export interface TTSConfig {
   rate: number; // 0.5 to 2
@@ -172,7 +173,7 @@ export function useTextToSpeech(config: Partial<TTSConfig> = {}) {
     };
 
     utterance.onerror = (event) => {
-      console.error('TTS Error:', event.error);
+      logger.error('Text-to-speech error', event.error);
       setState(prev => ({
         ...prev,
         isPlaying: false,

@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import type { DiagnosticResult } from '@/types/diagnostic';
 import type { DyslexiaBiomarkers } from '@/hooks/useDyslexiaClassifier';
 import type { REMoDNaVMetrics } from '@/hooks/useREMoDNaVClassifier';
+import { logger } from '@/lib/logger';
 
 export interface AIInsights {
   summary: string;
@@ -87,7 +88,7 @@ export function useAIInsights(): UseAIInsightsReturn {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(message);
-      console.error('AI Insights Error:', err);
+      logger.error('AI Insights generation failed', err);
       return null;
     } finally {
       setIsLoading(false);

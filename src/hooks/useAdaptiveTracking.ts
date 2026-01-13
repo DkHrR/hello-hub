@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useDeviceDetection } from './useDeviceDetection';
 import { useAdvancedEyeTracking } from './useAdvancedEyeTracking';
 import { useUnifiedEyeTracking } from './useUnifiedEyeTracking';
+import { logger } from '@/lib/logger';
 
 type TrackingMethod = 'tensorflow' | 'mediapipe' | 'manual' | 'none';
 
@@ -55,10 +56,10 @@ export function useAdaptiveTracking() {
           error: null,
           fallbackReason: null,
         });
-        console.log('[AdaptiveTracking] Using TensorFlow.js eye tracking');
+        logger.info('Using TensorFlow.js eye tracking');
         return;
       } catch (error) {
-        console.warn('[AdaptiveTracking] TensorFlow.js failed, falling back to MediaPipe');
+        logger.warn('TensorFlow.js failed, falling back to MediaPipe');
         setState(prev => ({ 
           ...prev, 
           fallbackReason: 'TensorFlow.js initialization failed, using MediaPipe' 
@@ -76,9 +77,9 @@ export function useAdaptiveTracking() {
         error: null,
         fallbackReason: method === 'tensorflow' ? 'Fallback from TensorFlow.js' : null,
       });
-      console.log('[AdaptiveTracking] Using MediaPipe eye tracking');
+      logger.info('Using MediaPipe eye tracking');
     } catch (error) {
-      console.warn('[AdaptiveTracking] MediaPipe failed, no eye tracking available');
+      logger.warn('MediaPipe failed, no eye tracking available');
       setState({
         activeMethod: 'manual',
         isInitialized: false,
