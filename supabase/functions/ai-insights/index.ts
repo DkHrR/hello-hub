@@ -155,7 +155,8 @@ Deno.serve(async (req: Request) => {
     // Call Lovable AI Gateway
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) {
-      console.error("LOVABLE_API_KEY not configured");
+      // Log configuration issue without exposing key names
+      console.error("AI service configuration incomplete");
       return new Response(
         JSON.stringify({ error: "AI service temporarily unavailable" }),
         { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -186,7 +187,8 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!aiResponse.ok) {
-      console.error("AI Gateway error:", aiResponse.status, await aiResponse.text());
+      // Log only status code, not response body which may contain sensitive details
+      console.error("AI Gateway error:", aiResponse.status);
       return new Response(
         JSON.stringify({ error: "AI analysis temporarily unavailable" }),
         { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -210,7 +212,8 @@ Deno.serve(async (req: Request) => {
       const jsonStr = jsonMatch ? jsonMatch[1] : content;
       insights = JSON.parse(jsonStr.trim());
     } catch {
-      console.error("Failed to parse AI response:", content);
+      // Log parsing failure without exposing AI response content
+      console.error("Failed to parse AI response");
       // Return a structured fallback response
       insights = generateFallbackInsights(diagnosticResult, safeName, safeGrade);
     }
@@ -221,7 +224,8 @@ Deno.serve(async (req: Request) => {
     );
 
   } catch (error) {
-    console.error("AI Insights error:", error);
+    // Log error type without exposing sensitive details
+    console.error("AI Insights error:", (error as Error)?.name || 'Unknown');
     return new Response(
       JSON.stringify({ error: "An unexpected error occurred" }),
       { status: 500, headers: { ...getCorsHeaders(req), "Content-Type": "application/json" } }

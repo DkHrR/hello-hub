@@ -73,7 +73,8 @@ Deno.serve(async (req) => {
     
     // Check rate limiting
     if (isRateLimited(clientId)) {
-      console.log(`Rate limit exceeded for client: ${clientId}`);
+      // Log rate limit without exposing client identifier
+      console.log('Rate limit exceeded');
       return new Response(
         JSON.stringify({ error: 'Too many requests. Please try again later.' }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -84,7 +85,8 @@ Deno.serve(async (req) => {
 
     // Validate access code format before any database operations
     if (!isValidAccessCodeFormat(accessCode)) {
-      console.log(`Invalid access code format attempted: ${clientId}`);
+      // Log validation failure without exposing client details
+      console.log('Invalid access code format attempted');
       return new Response(
         JSON.stringify({ valid: false, error: 'Invalid access code format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -105,7 +107,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (linkError) {
-        console.error('Database error during validation:', linkError.message);
+        // Log error type without exposing database details
+        console.error('Database validation error');
         return new Response(
           JSON.stringify({ valid: false }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -113,8 +116,8 @@ Deno.serve(async (req) => {
       }
 
       if (!linkData) {
-        // Log failed attempt without revealing code
-        console.log(`Access code validation failed for client: ${clientId}`);
+        // Log failed attempt without revealing code or client
+        console.log('Access code validation failed');
         return new Response(
           JSON.stringify({ valid: false }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -124,7 +127,7 @@ Deno.serve(async (req) => {
       // Check if access code has expired
       const expiresAt = new Date(linkData.expires_at);
       if (expiresAt < new Date()) {
-        console.log(`Expired access code attempted by client: ${clientId}`);
+        console.log('Expired access code attempted');
         return new Response(
           JSON.stringify({ valid: false, error: 'Access code has expired' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -143,8 +146,8 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Valid unclaimed code
-      console.log(`Access code validated successfully for student: ${linkData.student_id}`);
+      // Valid unclaimed code - log success without exposing student ID
+      console.log('Access code validated successfully');
       return new Response(
         JSON.stringify({ 
           valid: true, 
@@ -173,7 +176,7 @@ Deno.serve(async (req) => {
       // Check if access code has expired
       const expiresAt = new Date(linkData.expires_at);
       if (expiresAt < new Date()) {
-        console.log(`Expired access code used for getData by client`);
+        console.log('Expired access code used for getData');
         return new Response(
           JSON.stringify({ error: 'Access code has expired' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -211,8 +214,8 @@ Deno.serve(async (req) => {
         .order('created_at', { ascending: false })
         .limit(10);
 
-      // Log successful data access
-      console.log(`Parent portal data accessed for student: ${linkData.student_id}`);
+      // Log successful data access without exposing student ID
+      console.log('Parent portal data accessed successfully');
 
       return new Response(
         JSON.stringify({

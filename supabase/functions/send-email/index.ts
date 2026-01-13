@@ -423,14 +423,16 @@ const handler = async (req: Request): Promise<Response> => {
     const accessToken = await getGoogleAccessToken(serviceAccountKey);
     await sendGmailEmail(accessToken, senderEmail, to, emailSubject || "Neuro-Read X Notification", emailHtml);
 
-    console.log(`Email sent successfully to ${to} by user ${user.id}`);
+    // Log success without sensitive details
+    console.log('Email sent successfully');
 
     return new Response(
       JSON.stringify({ success: true, message: "Email sent successfully" }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
-    console.error("Error sending email:", error);
+    // Log error type without exposing sensitive details
+    console.error('Email sending failed:', error?.name || 'Unknown error');
     return new Response(
       JSON.stringify({ error: "Failed to send email. Please try again later." }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
