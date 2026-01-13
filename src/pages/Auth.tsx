@@ -10,10 +10,56 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RoleSelection } from '@/components/auth/RoleSelection';
 import { toast } from 'sonner';
-import { Brain, Mail, Lock, User, Loader2, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Brain, Mail, Lock, User, Loader2, ArrowLeft, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useUserRole, UI_ROLE_TO_DB_ROLE, type AppRole } from '@/hooks/useUserRole';
 import { logger } from '@/lib/logger';
 import { useEmailService } from '@/hooks/useEmailService';
+import { supabase } from '@/integrations/supabase/client';
+
+// Resend confirmation email button component
+function ResendConfirmationButton({ email }: { email: string }) {
+  const [isResending, setIsResending] = useState(false);
+  
+  const handleResend = async () => {
+    setIsResending(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`
+        }
+      });
+      if (error) throw error;
+      toast.success('Confirmation email resent! Check your inbox.');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to resend email');
+    } finally {
+      setIsResending(false);
+    }
+  };
+  
+  return (
+    <Button
+      variant="default"
+      onClick={handleResend}
+      disabled={isResending}
+      className="w-full"
+    >
+      {isResending ? (
+        <>
+          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+          Resending...
+        </>
+      ) : (
+        <>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Resend Confirmation Email
+        </>
+      )}
+    </Button>
+  );
+}
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string()
@@ -262,6 +308,8 @@ export default function AuthPage() {
                       <CheckCircle2 className="w-4 h-4 text-green-500" />
                       <span>Confirmation email sent</span>
                     </div>
+                    
+                    <ResendConfirmationButton email={pendingEmailConfirmation} />
                     
                     <Button
                       variant="outline"

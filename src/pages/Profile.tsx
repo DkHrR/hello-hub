@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useEmailService } from '@/hooks/useEmailService';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { 
@@ -21,18 +21,21 @@ import {
   Loader2, 
   Calendar,
   Building2,
-  Briefcase,
-  Key
+  Key,
+  AlertCircle
 } from 'lucide-react';
+import { EmailVerificationReminder } from '@/components/auth/EmailVerificationReminder';
+import { EmailPreferencesCard } from '@/components/profile/EmailPreferencesCard';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { user, profile, loading: authLoading } = useAuth();
   const { roles, isLoading: rolesLoading } = useUserRole();
+  const { sendEmail } = useEmailService();
   
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [organization, setOrganization] = useState('');
-  const [title, setTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -43,11 +46,14 @@ export default function ProfilePage() {
   const isOAuthUser = user?.app_metadata?.provider === 'google' || 
                       user?.identities?.some(i => i.provider === 'google');
 
+  // Check email verification status
+  const isEmailVerified = user?.email_confirmed_at || isOAuthUser;
+
   useEffect(() => {
     if (profile) {
-      setDisplayName(profile.display_name || '');
+      setFirstName(profile.first_name || profile.full_name?.split(' ')[0] || '');
+      setLastName(profile.last_name || profile.full_name?.split(' ').slice(1).join(' ') || '');
       setOrganization(profile.organization || '');
-      setTitle(profile.title || '');
     }
   }, [profile]);
 
@@ -62,15 +68,18 @@ export default function ProfilePage() {
     
     setIsSaving(true);
     try {
+      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      
       const { error } = await supabase
         .from('profiles')
         .update({
-          display_name: displayName.trim() || null,
+          first_name: firstName.trim() || null,
+          last_name: lastName.trim() || null,
+          full_name: fullName || null,
           organization: organization.trim() || null,
-          title: title.trim() || null,
           updated_at: new Date().toISOString()
         })
-        .eq('user_id', user.id);
+        .eq('id', user.id);
 
       if (error) throw error;
       toast.success('Profile updated successfully');
@@ -99,6 +108,17 @@ export default function ProfilePage() {
       });
 
       if (error) throw error;
+      
+      // Send password change notification email via SMTP
+      if (user?.email) {
+        const userName = profile?.first_name || profile?.full_name || user.email.split('@')[0];
+        await sendEmail({
+          to: user.email,
+          type: 'password_change',
+          userName: userName
+        });
+      }
+      
       toast.success('Password changed successfully');
       setNewPassword('');
       setConfirmPassword('');
@@ -115,6 +135,7 @@ export default function ProfilePage() {
       case 'clinician': return 'default';
       case 'educator': return 'secondary';
       case 'parent': return 'outline';
+      case 'individual': return 'outline';
       default: return 'outline';
     }
   };
@@ -147,6 +168,11 @@ export default function ProfilePage() {
           </motion.div>
 
           <div className="space-y-6">
+            {/* Email Verification Reminder */}
+            {!isEmailVerified && user?.email && (
+              <EmailVerificationReminder email={user.email} />
+            )}
+
             {/* Account Information */}
             <Card>
               <CardHeader>
@@ -161,10 +187,20 @@ export default function ProfilePage() {
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                   <Mail className="w-5 h-5 text-muted-foreground" />
-                  <div>
+                  <div className="flex-1">
                     <p className="text-sm text-muted-foreground">Email</p>
                     <p className="font-medium">{user?.email}</p>
                   </div>
+                  {isEmailVerified ? (
+                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
+                      Verified
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30">
+                      <AlertCircle className="w-3 h-3 mr-1" />
+                      Unverified
+                    </Badge>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
@@ -175,7 +211,7 @@ export default function ProfilePage() {
                       {roles.length > 0 ? (
                         roles.map(role => (
                           <Badge key={role} variant={getRoleBadgeVariant(role)}>
-                            {role.charAt(0).toUpperCase() + role.slice(1)}
+                            {role === 'parent' ? 'Individual' : role.charAt(0).toUpperCase() + role.slice(1)}
                           </Badge>
                         ))
                       ) : (
@@ -225,22 +261,33 @@ export default function ProfilePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Briefcase className="w-5 h-5 text-primary" />
+                  <User className="w-5 h-5 text-primary" />
                   Profile Details
                 </CardTitle>
                 <CardDescription>
-                  Update your display name and professional information
+                  Update your name and professional information
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="displayName">Display Name</Label>
-                  <Input
-                    id="displayName"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Enter your name"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input
+                      id="firstName"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="Enter first name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input
+                      id="lastName"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Enter last name"
+                    />
+                  </div>
                 </div>
                 
                 <div className="space-y-2">
@@ -272,6 +319,9 @@ export default function ProfilePage() {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Email Preferences */}
+            {user && <EmailPreferencesCard userId={user.id} />}
 
             {/* Password Change - Only for email/password users */}
             {!isOAuthUser && (

@@ -42,11 +42,12 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
 
 interface EmailRequest {
   to: string;
-  subject: string;
-  html: string;
-  type?: 'assessment_report' | 'welcome' | 'weekly_summary';
+  subject?: string;
+  html?: string;
+  type?: 'assessment_report' | 'welcome' | 'weekly_summary' | 'password_change' | 'confirmation';
   assessmentId?: string;
   studentName?: string;
+  userName?: string;
 }
 
 // Simple in-memory rate limiting (resets on function cold start)
@@ -115,13 +116,17 @@ async function sendSmtpEmail(
   }
 }
 
-// Email templates
-function getAssessmentReportTemplate(studentName: string, data: any): string {
-  // Sanitize student name to prevent XSS
-  const safeName = studentName.replace(/[<>&"']/g, (c) => {
+// Sanitize text to prevent XSS
+function sanitize(text: string): string {
+  return text.replace(/[<>&"']/g, (c) => {
     const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
     return entities[c] || c;
   });
+}
+
+// Email templates
+function getAssessmentReportTemplate(studentName: string, data: any): string {
+  const safeName = sanitize(studentName);
   
   return `
     <!DOCTYPE html>
@@ -200,11 +205,7 @@ function getAssessmentReportTemplate(studentName: string, data: any): string {
 }
 
 function getWelcomeTemplate(userName: string): string {
-  // Sanitize user name to prevent XSS
-  const safeName = userName.replace(/[<>&"']/g, (c) => {
-    const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
-    return entities[c] || c;
-  });
+  const safeName = sanitize(userName);
   
   return `
     <!DOCTYPE html>
@@ -233,12 +234,111 @@ function getWelcomeTemplate(userName: string): string {
             Get started by:
           </p>
           <ul style="color: #666; line-height: 1.8;">
-            <li>Adding your first student profile</li>
             <li>Running an eye-tracking assessment</li>
             <li>Reviewing detailed diagnostic reports</li>
+            <li>Exploring the Reading Lab for practice</li>
           </ul>
           <p style="color: #666; line-height: 1.6;">
             Our advanced AI analyzes reading patterns, eye movements, and handwriting to help identify potential learning differences early.
+          </p>
+        </div>
+        <div class="footer">
+          <p>Neuro-Read X - AI-Powered Learning Assessment Platform</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+function getPasswordChangeTemplate(userName: string): string {
+  const safeName = sanitize(userName);
+  const changeTime = new Date().toLocaleString('en-US', { 
+    dateStyle: 'full', 
+    timeStyle: 'short' 
+  });
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #dc2626, #ef4444); color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; }
+        .alert-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 15px; margin: 20px 0; }
+        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin: 0; font-size: 24px;">🔐 Password Changed</h1>
+        </div>
+        <div class="content">
+          <h2 style="color: #333;">Hello ${safeName},</h2>
+          <p style="color: #666; line-height: 1.6;">
+            Your Neuro-Read X account password was successfully changed on:
+          </p>
+          <p style="font-weight: bold; color: #333; font-size: 16px;">
+            ${changeTime}
+          </p>
+          
+          <div class="alert-box">
+            <p style="color: #dc2626; margin: 0;">
+              <strong>⚠️ Didn't make this change?</strong><br>
+              If you didn't change your password, please contact our support team immediately at 
+              <a href="mailto:noreply.nueroread@gmail.com">noreply.nueroread@gmail.com</a>
+            </p>
+          </div>
+          
+          <p style="color: #666; line-height: 1.6;">
+            For your security, we recommend:
+          </p>
+          <ul style="color: #666; line-height: 1.8;">
+            <li>Using a unique password for each account</li>
+            <li>Enabling two-factor authentication when available</li>
+            <li>Never sharing your password with others</li>
+          </ul>
+        </div>
+        <div class="footer">
+          <p>This is an automated security notification from Neuro-Read X</p>
+          <p>© ${new Date().getFullYear()} All rights reserved</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+function getConfirmationTemplate(userName: string): string {
+  const safeName = sanitize(userName);
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 30px; text-align: center; }
+        .content { padding: 30px; }
+        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin: 0; font-size: 24px;">✅ Email Confirmed!</h1>
+        </div>
+        <div class="content">
+          <h2 style="color: #333;">Welcome aboard, ${safeName}!</h2>
+          <p style="color: #666; line-height: 1.6;">
+            Your email has been successfully verified. You now have full access to all Neuro-Read X features.
+          </p>
+          <p style="color: #666; line-height: 1.6;">
+            You're all set to start using our AI-powered learning assessment platform!
           </p>
         </div>
         <div class="footer">
@@ -316,7 +416,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const { to, subject, html, type, assessmentId, studentName }: EmailRequest = await req.json();
+    const { to, subject, html, type, assessmentId, studentName, userName }: EmailRequest = await req.json();
 
     // 3. Validate recipient email
     if (!to || !isValidEmail(to)) {
@@ -326,30 +426,71 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // 4. Check user's email preferences
+    const { data: profileData } = await supabaseAuth
+      .from("profiles")
+      .select("email_preferences")
+      .eq("id", user.id)
+      .single();
+
+    const emailPrefs = profileData?.email_preferences as Record<string, boolean> || {};
+
     let emailHtml = html;
     let emailSubject = subject;
 
-    // Handle specific email types with authorization checks
-    if (type === 'assessment_report' && assessmentId) {
-      // 4. Verify the user owns this assessment (use authenticated client - RLS enforced)
-      const { data: assessment, error } = await supabaseAuth
-        .from("diagnostic_results")
-        .select("*")
-        .eq("id", assessmentId)
-        .single();
-
-      if (error || !assessment) {
+    // Handle specific email types with authorization checks and preference checks
+    if (type === 'assessment_report') {
+      // Check preference
+      if (emailPrefs.assessment_reports === false) {
         return new Response(
-          JSON.stringify({ error: 'Assessment not found or you do not have permission to access it' }),
-          { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          JSON.stringify({ success: true, message: "Email skipped due to user preferences" }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
 
-      emailHtml = getAssessmentReportTemplate(studentName || "Student", assessment);
+      if (assessmentId) {
+        // Verify the user owns this assessment
+        const { data: assessment, error } = await supabaseAuth
+          .from("assessment_results")
+          .select("*")
+          .eq("id", assessmentId)
+          .single();
+
+        if (error || !assessment) {
+          return new Response(
+            JSON.stringify({ error: 'Assessment not found or you do not have permission to access it' }),
+            { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        emailHtml = getAssessmentReportTemplate(studentName || "Student", assessment);
+      } else {
+        emailHtml = getAssessmentReportTemplate(studentName || "Student", {});
+      }
       emailSubject = `Assessment Report for ${studentName || "Student"} - Neuro-Read X`;
     } else if (type === 'welcome') {
-      emailHtml = getWelcomeTemplate(studentName || "User");
+      // Check preference
+      if (emailPrefs.welcome_email === false) {
+        return new Response(
+          JSON.stringify({ success: true, message: "Email skipped due to user preferences" }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      emailHtml = getWelcomeTemplate(userName || studentName || "User");
       emailSubject = "Welcome to Neuro-Read X! 🧠";
+    } else if (type === 'password_change') {
+      // Check preference
+      if (emailPrefs.password_change === false) {
+        return new Response(
+          JSON.stringify({ success: true, message: "Email skipped due to user preferences" }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      emailHtml = getPasswordChangeTemplate(userName || "User");
+      emailSubject = "🔐 Your Neuro-Read X Password Was Changed";
+    } else if (type === 'confirmation') {
+      emailHtml = getConfirmationTemplate(userName || "User");
+      emailSubject = "✅ Email Confirmed - Neuro-Read X";
     } else if (!emailHtml) {
       // For custom emails, require HTML content
       return new Response(
@@ -362,7 +503,7 @@ const handler = async (req: Request): Promise<Response> => {
     await sendSmtpEmail(to, emailSubject || "Neuro-Read X Notification", emailHtml);
 
     // Log success without sensitive details
-    console.log('Email sent successfully via SMTP');
+    console.log('Email sent successfully via SMTP, type:', type || 'custom');
 
     return new Response(
       JSON.stringify({ success: true, message: "Email sent successfully" }),
@@ -370,7 +511,7 @@ const handler = async (req: Request): Promise<Response> => {
     );
   } catch (error: any) {
     // Log error type without exposing sensitive details
-    console.error('Email sending failed:', error?.name || 'Unknown error');
+    console.error('Email sending failed:', error?.name || 'Unknown error', error?.message);
     return new Response(
       JSON.stringify({ error: "Failed to send email. Please try again later." }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }

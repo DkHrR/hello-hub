@@ -5,10 +5,19 @@ import { supabase } from '@/integrations/supabase/client';
 // Profile interface matching the actual profiles table schema
 interface Profile {
   id: string;
-  user_id: string;
-  display_name: string | null;
-  title: string | null;
+  full_name: string | null;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
   organization: string | null;
+  email_verified: boolean;
+  email_preferences: {
+    assessment_reports: boolean;
+    weekly_summary: boolean;
+    password_change: boolean;
+    welcome_email: boolean;
+  } | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,12 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
+      .select('id, full_name, email, first_name, last_name, avatar_url, organization, email_verified, email_preferences, created_at, updated_at')
+      .eq('id', userId)
       .maybeSingle();
     
     if (!error && data) {
-      setProfile(data);
+      setProfile(data as Profile);
     }
   };
 

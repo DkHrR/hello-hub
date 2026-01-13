@@ -7,9 +7,10 @@ interface SendEmailOptions {
   to: string;
   subject?: string;
   html?: string;
-  type?: 'assessment_report' | 'welcome' | 'weekly_summary';
+  type?: 'assessment_report' | 'welcome' | 'weekly_summary' | 'password_change' | 'confirmation';
   assessmentId?: string;
   studentName?: string;
+  userName?: string;
 }
 
 export function useEmailService() {

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Brain, Menu, X, LogIn, LogOut, User } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,19 +13,28 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-const navLinks = [
+// Base nav links available to all users
+const baseNavLinks = [
   { href: '/', label: 'Home' },
   { href: '/assessment', label: 'Assessment' },
   { href: '/reading', label: 'Reading Lab' },
-  { href: '/students', label: 'Students' },
   { href: '/dashboard', label: 'Dashboard' },
 ];
+
+// Students tab only for non-individual roles
+const studentsLink = { href: '/students', label: 'Students' };
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuth();
+  const { isIndividual, hasRole } = useUserRole();
+
+  // Build nav links based on role - hide Students for individual users
+  const navLinks = isIndividual || hasRole('parent') 
+    ? baseNavLinks 
+    : [...baseNavLinks.slice(0, 3), studentsLink, baseNavLinks[3]];
 
   const handleSignOut = async () => {
     await signOut();
@@ -32,7 +42,7 @@ export function Header() {
   };
 
   // Get display name from profile or email
-  const displayName = profile?.display_name || user?.email?.split('@')[0] || 'Account';
+  const displayName = profile?.full_name || profile?.first_name || user?.email?.split('@')[0] || 'Account';
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
