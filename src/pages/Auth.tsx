@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { z } from 'zod';
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RoleSelection } from '@/components/auth/RoleSelection';
 import { toast } from 'sonner';
-import { Brain, Mail, Lock, User, Loader2, ArrowLeft } from 'lucide-react';
+import { Brain, Mail, Lock, User, Loader2, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useUserRole, UI_ROLE_TO_DB_ROLE, type AppRole } from '@/hooks/useUserRole';
 import { logger } from '@/lib/logger';
 import { useEmailService } from '@/hooks/useEmailService';
@@ -36,12 +36,25 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showEmailConfirmation, setShowEmailConfirmation] = useState(false);
+  const [pendingEmailConfirmation, setPendingEmailConfirmation] = useState('');
   const [errors, setErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
   const [showRoleSelection, setShowRoleSelection] = useState(false);
   const [pendingUser, setPendingUser] = useState<{ id: string; email: string; name: string } | null>(null);
+  const welcomeEmailSentRef = useRef(false);
 
   useEffect(() => {
     if (user && !loading && !isRoleLoading) {
+      // Check if email is confirmed
+      const isEmailConfirmed = user.email_confirmed_at || user.app_metadata?.provider === 'google';
+      
+      if (!isEmailConfirmed) {
+        // User signed up but email not confirmed yet
+        setShowEmailConfirmation(true);
+        setPendingEmailConfirmation(user.email || '');
+        return;
+      }
+      
       // Check if user has a role in the user_roles table (server-side check)
       if (hasAnyRole()) {
         // User has a role, go to dashboard
@@ -57,6 +70,22 @@ export default function AuthPage() {
       }
     }
   }, [user, loading, isRoleLoading, hasAnyRole, profile, navigate]);
+
+  // Separate effect for welcome email to avoid infinite loop
+  useEffect(() => {
+    if (user && !loading && !welcomeEmailSentRef.current) {
+      const isEmailConfirmed = user.email_confirmed_at || user.app_metadata?.provider === 'google';
+      
+      if (isEmailConfirmed && user.email) {
+        welcomeEmailSentRef.current = true;
+        const userName = profile?.display_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0];
+        sendWelcomeEmail(user.email, userName).catch((err) => {
+          logger.error('Failed to send welcome email', err);
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.email_confirmed_at, loading]);
 
   const validateEmail = (value: string) => {
     try {
@@ -143,14 +172,10 @@ export default function AuthPage() {
       logger.error('Sign up failed', error);
       toast.error('Unable to create account. Please try again or use a different email.');
     } else {
-      toast.success('Account created! Please select your role.');
-      
-      // Send welcome/confirmation email in the background
-      sendWelcomeEmail(email, fullName).catch((err) => {
-        logger.error('Failed to send welcome email', err);
-      });
-      
-      // Role selection will trigger via useEffect
+      // Show email confirmation screen
+      setShowEmailConfirmation(true);
+      setPendingEmailConfirmation(email);
+      toast.success('Confirmation email sent! Please check your inbox.');
     }
   };
 
@@ -196,7 +221,72 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <AnimatePresence mode="wait">
-        {showRoleSelection && pendingUser ? (
+        {showEmailConfirmation ? (
+          <motion.div
+            key="email-confirmation"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="w-full max-w-md"
+          >
+            {/* Logo */}
+            <div className="text-center mb-8">
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <div className="relative">
+                  <Brain className="w-10 h-10 text-primary" />
+                  <div className="absolute inset-0 blur-lg bg-primary/30" />
+                </div>
+                <span className="text-2xl font-bold">
+                  Neuro-Read <span className="text-gradient-neuro">X</span>
+                </span>
+              </div>
+            </div>
+
+            <Card className="backdrop-blur-sm bg-card/80">
+              <CardContent className="pt-8 pb-8">
+                <div className="text-center space-y-4">
+                  <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                    <Mail className="w-8 h-8 text-primary" />
+                  </div>
+                  <h2 className="text-xl font-semibold">Check Your Email</h2>
+                  <p className="text-muted-foreground">
+                    We've sent a confirmation link to:
+                  </p>
+                  <p className="font-medium text-primary">{pendingEmailConfirmation}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Click the link in the email to verify your account. Once verified, you'll be able to sign in and continue.
+                  </p>
+                  
+                  <div className="pt-4 space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center">
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      <span>Confirmation email sent</span>
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowEmailConfirmation(false);
+                        setPendingEmailConfirmation('');
+                      }}
+                      className="w-full"
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Back to Sign In
+                    </Button>
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground pt-4">
+                    Didn't receive the email? Check your spam folder or contact{' '}
+                    <a href="mailto:noreply.nueroread@gmail.com" className="text-primary hover:underline">
+                      support
+                    </a>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : showRoleSelection && pendingUser ? (
           <RoleSelection 
             key="role-selection"
             onRoleSelect={handleRoleSelect}
