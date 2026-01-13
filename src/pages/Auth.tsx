@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { Brain, Mail, Lock, User, Loader2, ArrowLeft } from 'lucide-react';
 import { useUserRole, UI_ROLE_TO_DB_ROLE, type AppRole } from '@/hooks/useUserRole';
 import { logger } from '@/lib/logger';
+import { useEmailService } from '@/hooks/useEmailService';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string()
@@ -28,6 +29,7 @@ export default function AuthPage() {
   const navigate = useNavigate();
   const { user, signIn, signUp, signInWithGoogle, resetPassword, loading, profile } = useAuth();
   const { hasAnyRole, setRole, isSettingRole, isLoading: isRoleLoading } = useUserRole();
+  const { sendWelcomeEmail } = useEmailService();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [email, setEmail] = useState('');
@@ -142,6 +144,12 @@ export default function AuthPage() {
       toast.error('Unable to create account. Please try again or use a different email.');
     } else {
       toast.success('Account created! Please select your role.');
+      
+      // Send welcome/confirmation email in the background
+      sendWelcomeEmail(email, fullName).catch((err) => {
+        logger.error('Failed to send welcome email', err);
+      });
+      
       // Role selection will trigger via useEffect
     }
   };
