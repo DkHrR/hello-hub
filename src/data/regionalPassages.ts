@@ -1,10 +1,10 @@
 // Regional language reading passages for India
-// Hindi, Tamil, and Telugu passages for clinical assessment
+// Hindi, Tamil, Telugu, Kannada, Bengali, and Marathi passages for clinical assessment
 
 import type { ReadingPassage } from './readingPassages';
 
 export interface RegionalPassage extends ReadingPassage {
-  language: 'hi' | 'ta' | 'te';
+  language: 'hi' | 'ta' | 'te' | 'kn' | 'bn' | 'mr';
   languageName: string;
   speechRecognitionLocale: string;
 }
@@ -150,10 +150,151 @@ export const regionalPassages: RegionalPassage[] = [
     wordCount: 135,
     difficulty: 'advanced',
   },
+
+  // Kannada Passages
+  {
+    id: 'kannada-k-1',
+    grade: 'K-1',
+    title: 'ಸಣ್ಣ ಹಕ್ಕಿ',
+    language: 'kn',
+    languageName: 'Kannada',
+    speechRecognitionLocale: 'kn-IN',
+    text: `ಒಂದು ಕಾಲದಲ್ಲಿ ಒಂದು ಸಣ್ಣ ಕೆಂಪು ಹಕ್ಕಿ ಇತ್ತು. ಆ ಹಕ್ಕಿ ಕೆರೆಯ ಬಳಿ ದೊಡ್ಡ ಮರದಲ್ಲಿ ವಾಸಿಸುತ್ತಿತ್ತು. ಪ್ರತಿ ಬೆಳಿಗ್ಗೆ ಹಕ್ಕಿ ಒಂದು ಸಿಹಿಯಾದ ಹಾಡು ಹಾಡುತ್ತಿತ್ತು. ಆ ಹಾಡು ತುಂಬಾ ಚೆನ್ನಾಗಿತ್ತು, ಎಲ್ಲಾ ಪ್ರಾಣಿಗಳು ನಿಲ್ಲಿಸಿ ಕೇಳುತ್ತಿದ್ದವು.
+
+ಒಂದು ದಿನ ಹಕ್ಕಿ ಒಂದು ಸಣ್ಣ ಮೊಲವನ್ನು ಒಬ್ಬಂಟಿಯಾಗಿ ಕುಳಿತಿರುವುದನ್ನು ನೋಡಿತು. ಮೊಲ ದುಃಖವಾಗಿ ಕಾಣುತ್ತಿತ್ತು. ದಯಾಳು ಹಕ್ಕಿ ಕೆಳಗೆ ಹಾರಿ ಬಂದು ಕೇಳಿತು, "ನೀನು ಏಕೆ ದುಃಖವಾಗಿದ್ದೀಯಾ?" ಮೊಲ ಹೇಳಿತು, "ನನಗೆ ಮನೆಗೆ ದಾರಿ ತಿಳಿಯುತ್ತಿಲ್ಲ."
+
+ಹಕ್ಕಿ ಸಹಾಯ ಮಾಡಲು ಬಯಸಿತು. ಅದು ಆಕಾಶದಲ್ಲಿ ಎತ್ತರಕ್ಕೆ ಹಾರಿ ಸುತ್ತಲೂ ನೋಡಿತು. ಬೇಗನೆ ಬೆಟ್ಟದ ಬಳಿ ಮೊಲದ ಮನೆಯನ್ನು ಕಂಡುಹಿಡಿಯಿತು.`,
+    wordCount: 105,
+    difficulty: 'easy',
+  },
+  {
+    id: 'kannada-2-3',
+    grade: '2-3',
+    title: 'ಮಾಯಾ ತೋಟ',
+    language: 'kn',
+    languageName: 'Kannada',
+    speechRecognitionLocale: 'kn-IN',
+    text: `ಮಾಯಾ ತನ್ನ ಅಜ್ಜಿಯ ಮನೆಯ ಹಿಂಭಾಗದಲ್ಲಿ ಅಸಾಧಾರಣವಾದ ಏನನ್ನೋ ಕಂಡುಹಿಡಿದಳು. ಹಳೆಯ ಮರದ ಬೇಲಿಯ ಹಿಂದೆ ಅವಳು ಈ ಹಿಂದೆಂದೂ ನೋಡದಿದ್ದ ಒಂದು ತೋಟ ಮರೆಯಾಗಿತ್ತು. ಅಲ್ಲಿನ ಹೂವುಗಳು ಮೃದುವಾದ, ಬಣ್ಣದ ಬೆಳಕಿನಿಂದ ಹೊಳೆಯುತ್ತಿದ್ದವು, ಬೆಳ್ಳಿ ರೆಕ್ಕೆಗಳೊಂದಿಗೆ ಸಣ್ಣ ಚಿಟ್ಟೆಗಳು ಗಾಳಿಯಲ್ಲಿ ನೃತ್ಯ ಮಾಡುತ್ತಿದ್ದವು.
+
+ಮಾಯಾ ಈ ಅನ್ವೇಷಣೆಯ ಬಗ್ಗೆ ಅಜ್ಜಿಗೆ ಹೇಳಿದಾಗ ಅವಳು ನಗುತ್ತಿದ್ದಳು. "ಈ ತೋಟ ತಲೆಮಾರುಗಳಿಂದ ನಮ್ಮ ಕುಟುಂಬದಲ್ಲಿದೆ," ಅವಳು ವಿವರಿಸಿದಳು. "ಇದು ಪ್ರಕೃತಿ ತನ್ನ ನಿಜವಾದ ಮಾಯಾಜಾಲವನ್ನು ತೋರಿಸುವ ವಿಶೇಷ ಸ್ಥಳ."
+
+ಮಾಯಾ ಪ್ರತಿ ಮಧ್ಯಾಹ್ನ ತೋಟಕ್ಕೆ ಹೋಗಲು ಪ್ರಾರಂಭಿಸಿದಳು. ಅಸಾಧಾರಣ ಸಸ್ಯಗಳನ್ನು ನೋಡಿಕೊಳ್ಳಲು ಕಲಿತಳು ಮತ್ತು ಅವಳು ನೋಡಿದ ಎಲ್ಲಾ ಜೀವಿಗಳ ಬಗ್ಗೆ ಡೈರಿ ಬರೆಯಲು ಪ್ರಾರಂಭಿಸಿದಳು.`,
+    wordCount: 120,
+    difficulty: 'medium',
+  },
+  {
+    id: 'kannada-4-5',
+    grade: '4-5',
+    title: 'ಸಮುದ್ರ ಅನ್ವೇಷಕ',
+    language: 'kn',
+    languageName: 'Kannada',
+    speechRecognitionLocale: 'kn-IN',
+    text: `ಡಾ. ಪ್ರಿಯಾ ಶರ್ಮಾ ಸಂಶೋಧನಾ ಜಲಾಂತರ್ಗಾಮಿ ಹಿಂದೂ ಮಹಾಸಾಗರದ ಅನ್ವೇಷಿಸದ ಆಳಕ್ಕೆ ಇಳಿದಾಗ ತನ್ನ ಡೈವಿಂಗ್ ಸಲಕರಣೆಗಳನ್ನು ಸರಿಹೊಂದಿಸಿದರು. ಚೆನ್ನೈನಿಂದ ಬಂದ ಸಮುದ್ರ ಜೀವಶಾಸ್ತ್ರಜ್ಞರಾಗಿ, ಅವರು ಸಮುದ್ರ ಪರಿಸರ ವ್ಯವಸ್ಥೆಗಳನ್ನು ಅಧ್ಯಯನ ಮಾಡಲು ಹದಿನೈದು ವರ್ಷಗಳನ್ನು ಕಳೆದರು, ಆದರೆ ಕೆಳಗೆ ಏನು ಕಾಯುತ್ತಿದೆಯೋ ಅದಕ್ಕೆ ಏನೂ ಅವರನ್ನು ಸಿದ್ಧಪಡಿಸಲಿಲ್ಲ.
+
+ಜಲಾಂತರ್ಗಾಮಿಯ ದೀಪಗಳು ಕಿಲೋಮೀಟರ್‌ಗಳ ದೂರ ವ್ಯಾಪಿಸಿದ ಅದ್ಭುತವಾದ ನೀರೊಳಗಿನ ಕಣಿವೆಯನ್ನು ಬೆಳಗಿಸಿದವು. ಪ್ರತಿ ಊಹಿಸಬಹುದಾದ ಬಣ್ಣದ ಜೀವಪ್ರಕಾಶ ಜೀವಿಗಳು ಕತ್ತಲೆಯಲ್ಲಿ ತುಡಿತ ಮತ್ತು ಹೊಳೆಯುತ್ತಿದ್ದವು, ರಾತ್ರಿ ಆಕಾಶದಲ್ಲಿ ಚೆಲ್ಲಾಪಿಲ್ಲಿಯಾಗಿರುವ ನಕ್ಷತ್ರಗಳನ್ನು ಹೋಲುವ ಮಂತ್ರಮುಗ್ಧ ಪ್ರದರ್ಶನವನ್ನು ಸೃಷ್ಟಿಸಿದವು.
+
+ಡಾ. ಶರ್ಮಾ ಅವರನ್ನು ಅತ್ಯಂತ ಆಕರ್ಷಿಸಿದ್ದು ಈ ತೀವ್ರ ಪರಿಸರದಲ್ಲಿ ಬದುಕುಳಿಯಲು ವಿಕಸನಗೊಂಡ ವಿಶಿಷ್ಟ ಜಾತಿಗಳು.`,
+    wordCount: 130,
+    difficulty: 'advanced',
+  },
+
+  // Bengali Passages
+  {
+    id: 'bengali-k-1',
+    grade: 'K-1',
+    title: 'ছোট পাখি',
+    language: 'bn',
+    languageName: 'Bengali',
+    speechRecognitionLocale: 'bn-IN',
+    text: `একসময় একটা ছোট লাল পাখি ছিল। সেই পাখিটা পুকুরের কাছে একটা বড় গাছে থাকত। প্রতিদিন সকালে পাখিটা একটা মিষ্টি গান গাইত। সেই গান এত সুন্দর ছিল যে সব জন্তুরা থেমে শুনত।
+
+একদিন পাখিটা দেখল একটা ছোট খরগোশ একা বসে আছে। খরগোশটা দুঃখী দেখাচ্ছিল। দয়ালু পাখি নিচে উড়ে এসে জিজ্ঞেস করল, "তুমি কেন দুঃখী?" খরগোশ বলল, "আমি বাড়ির পথ ভুলে গেছি।"
+
+পাখি সাহায্য করতে চাইল। সে আকাশে উঁচুতে উড়ে চারদিকে তাকাল। শীঘ্রই পাহাড়ের কাছে খরগোশের বাড়ি খুঁজে পেল।`,
+    wordCount: 95,
+    difficulty: 'easy',
+  },
+  {
+    id: 'bengali-2-3',
+    grade: '2-3',
+    title: 'মায়া বাগান',
+    language: 'bn',
+    languageName: 'Bengali',
+    speechRecognitionLocale: 'bn-IN',
+    text: `মায়া তার ঠাকুমার বাড়ির পিছনে অসাধারণ কিছু খুঁজে পেল। পুরনো কাঠের বেড়ার পিছনে লুকিয়ে ছিল এমন একটা বাগান যা সে আগে কখনো দেখেনি। সেখানকার ফুলগুলো নরম, রঙিন আলোতে জ্বলজ্বল করছিল, রুপোলি ডানাওয়ালা ছোট প্রজাপতিরা বাতাসে নাচছিল।
+
+যখন মায়া ঠাকুমাকে এই আবিষ্কারের কথা বলল তখন তিনি হাসলেন। "এই বাগান বহু প্রজন্ম ধরে আমাদের পরিবারে আছে," তিনি বোঝালেন। "এটা একটা বিশেষ জায়গা যেখানে প্রকৃতি তার আসল জাদু দেখায়।"
+
+মায়া প্রতিদিন দুপুরে বাগানে যেতে লাগল। অসাধারণ গাছগুলোর যত্ন নিতে শিখল এবং সে যা দেখেছে সব জীবের সম্পর্কে একটা ডায়েরি লিখতে শুরু করল।`,
+    wordCount: 125,
+    difficulty: 'medium',
+  },
+  {
+    id: 'bengali-4-5',
+    grade: '4-5',
+    title: 'সমুদ্র অন্বেষক',
+    language: 'bn',
+    languageName: 'Bengali',
+    speechRecognitionLocale: 'bn-IN',
+    text: `ডঃ প্রিয়া শর্মা তাঁর ডাইভিং সরঞ্জাম ঠিক করলেন যখন গবেষণা সাবমেরিন ভারত মহাসাগরের অনাবিষ্কৃত গভীরতায় নামল। চেন্নাইয়ের একজন সামুদ্রিক জীববিজ্ঞানী হিসেবে, তিনি পনেরো বছর সামুদ্রিক পরিবেশ অধ্যয়নে কাটিয়েছেন, কিন্তু নিচে যা অপেক্ষা করছিল তার জন্য কিছুই তাঁকে প্রস্তুত করেনি।
+
+সাবমেরিনের আলো কিলোমিটার জুড়ে বিস্তৃত একটি অসাধারণ জলের নিচের উপত্যকা আলোকিত করল। প্রতিটি কল্পনাযোগ্য রঙের জীবপ্রভা জীবেরা অন্ধকারে স্পন্দিত হচ্ছিল এবং জ্বলছিল, রাতের আকাশে ছড়িয়ে থাকা তারার মতো এক মন্ত্রমুগ্ধ দৃশ্য তৈরি করছিল।
+
+ডঃ শর্মাকে সবচেয়ে বেশি আকৃষ্ট করেছিল এই চরম পরিবেশে বেঁচে থাকার জন্য বিবর্তিত অনন্য প্রজাতিগুলো।`,
+    wordCount: 130,
+    difficulty: 'advanced',
+  },
+
+  // Marathi Passages
+  {
+    id: 'marathi-k-1',
+    grade: 'K-1',
+    title: 'लहान पक्षी',
+    language: 'mr',
+    languageName: 'Marathi',
+    speechRecognitionLocale: 'mr-IN',
+    text: `एकदा एक लहान लाल पक्षी होता. तो पक्षी तलावाजवळ एका मोठ्या झाडावर राहायचा. प्रत्येक सकाळी पक्षी एक गोड गाणे गायचा. ते गाणे इतके सुंदर होते की सगळे प्राणी थांबून ऐकायचे.
+
+एक दिवस पक्ष्याने एक लहान ससा एकटा बसलेला पाहिला. ससा दुःखी दिसत होता. दयाळू पक्षी खाली उडून आला आणि विचारले, "तू दुःखी का आहेस?" सशाने सांगितले, "मला घरी जाण्याचा रस्ता माहीत नाही."
+
+पक्षी मदत करायला हवी होती. तो आकाशात उंच उडाला आणि सगळीकडे पाहिले. लवकरच टेकडीजवळ सशाचे घर सापडले.`,
+    wordCount: 100,
+    difficulty: 'easy',
+  },
+  {
+    id: 'marathi-2-3',
+    grade: '2-3',
+    title: 'जादूची बाग',
+    language: 'mr',
+    languageName: 'Marathi',
+    speechRecognitionLocale: 'mr-IN',
+    text: `मायाला तिच्या आजीच्या घराच्या मागे काहीतरी असामान्य सापडले. जुन्या लाकडी कुंपणाच्या मागे एक बाग लपलेली होती जी तिने आधी कधीच पाहिली नव्हती. तिथली फुले मऊ, रंगीत प्रकाशाने चमकत होती, चांदीच्या पंखांची लहान फुलपाखरे हवेत नाचत होती.
+
+जेव्हा मायाने आजीला या शोधाबद्दल सांगितले तेव्हा त्या हसल्या. "ही बाग पिढ्यानपिढ्या आपल्या कुटुंबात आहे," त्यांनी समजावून सांगितले. "ही एक खास जागा आहे जिथे निसर्ग आपली खरी जादू दाखवतो."
+
+माया दररोज दुपारी बागेत जाऊ लागली. असामान्य वनस्पतींची काळजी घेणे शिकली आणि तिने पाहिलेल्या सर्व जीवांबद्दल डायरी लिहायला सुरुवात केली.`,
+    wordCount: 120,
+    difficulty: 'medium',
+  },
+  {
+    id: 'marathi-4-5',
+    grade: '4-5',
+    title: 'समुद्र संशोधक',
+    language: 'mr',
+    languageName: 'Marathi',
+    speechRecognitionLocale: 'mr-IN',
+    text: `डॉ. प्रिया शर्मा यांनी त्यांची डायव्हिंग उपकरणे समायोजित केली जेव्हा संशोधन पाणबुडी हिंद महासागराच्या अनपेक्षित खोलीत उतरली. चेन्नईच्या सागरी जीवशास्त्रज्ञ म्हणून, त्यांनी पंधरा वर्षे सागरी परिसंस्थांचा अभ्यास करण्यात घालवली होती, पण खाली जे वाट पाहत होते त्यासाठी काहीही त्यांना तयार करू शकले नाही.
+
+पाणबुडीच्या दिव्यांनी किलोमीटरपर्यंत पसरलेली एक अद्भुत पाण्याखालील दरी प्रकाशित केली. प्रत्येक कल्पनीय रंगाचे जैवप्रकाशी जीव अंधारात स्पंदित होत आणि चमकत होते, रात्रीच्या आकाशात विखुरलेल्या ताऱ्यांसारखे मंत्रमुग्ध करणारे दृश्य तयार करत होते.
+
+डॉ. शर्मा यांना सर्वाधिक आकर्षित करणारी गोष्ट म्हणजे या कठोर वातावरणात टिकून राहण्यासाठी विकसित झालेल्या अनोख्या प्रजाती.`,
+    wordCount: 130,
+    difficulty: 'advanced',
+  },
 ];
 
 // Get regional passage by language and grade
-export function getRegionalPassageForGrade(language: 'hi' | 'ta' | 'te', grade: string): RegionalPassage {
+export function getRegionalPassageForGrade(language: 'hi' | 'ta' | 'te' | 'kn' | 'bn' | 'mr', grade: string): RegionalPassage {
   const gradeLevel = grade.toLowerCase();
   const languagePassages = regionalPassages.filter(p => p.language === language);
   
@@ -167,17 +308,20 @@ export function getRegionalPassageForGrade(language: 'hi' | 'ta' | 'te', grade: 
 }
 
 // Get all passages for a language
-export function getPassagesForLanguage(language: 'hi' | 'ta' | 'te'): RegionalPassage[] {
+export function getPassagesForLanguage(language: 'hi' | 'ta' | 'te' | 'kn' | 'bn' | 'mr'): RegionalPassage[] {
   return regionalPassages.filter(p => p.language === language);
 }
 
 // Get speech recognition locale for language
-export function getSpeechLocale(language: 'en' | 'hi' | 'ta' | 'te'): string {
+export function getSpeechLocale(language: 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'bn' | 'mr'): string {
   const locales: Record<string, string> = {
     en: 'en-US',
     hi: 'hi-IN',
     ta: 'ta-IN',
-    te: 'te-IN'
+    te: 'te-IN',
+    kn: 'kn-IN',
+    bn: 'bn-IN',
+    mr: 'mr-IN'
   };
   return locales[language] || 'en-US';
 }
@@ -187,5 +331,8 @@ export const availableLanguages = [
   { code: 'en', name: 'English', nativeName: 'English' },
   { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
   { code: 'ta', name: 'Tamil', nativeName: 'தமிழ்' },
-  { code: 'te', name: 'Telugu', nativeName: 'తెలుగు' }
+  { code: 'te', name: 'Telugu', nativeName: 'తెలుగు' },
+  { code: 'kn', name: 'Kannada', nativeName: 'ಕನ್ನಡ' },
+  { code: 'bn', name: 'Bengali', nativeName: 'বাংলা' },
+  { code: 'mr', name: 'Marathi', nativeName: 'मराठी' }
 ] as const;

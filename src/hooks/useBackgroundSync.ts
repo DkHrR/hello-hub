@@ -50,7 +50,7 @@ export function useBackgroundSync() {
     setState(prev => ({ ...prev, queueStats: stats }));
   }, []);
 
-  // Process a single sync job - save via assessments and assessment_results tables
+  // Process a single sync job - save via diagnostic_results table
   const processJob = useCallback(async (job: SyncQueueItem): Promise<boolean> => {
     setState(prev => ({ ...prev, currentJob: job.id }));
     
@@ -60,56 +60,29 @@ export function useBackgroundSync() {
         const data = job.data;
         
         if (user) {
-          // Calculate risk score
-          const riskScore = data.results?.overallRiskLevel === 'high' ? 0.8 : 
-                            data.results?.overallRiskLevel === 'medium' ? 0.5 : 0.2;
-
-          // First create an assessment
-          const { data: assessment, error: assessmentError } = await supabase
-            .from('assessments')
+          // Save to diagnostic_results table
+          const { error: resultError } = await supabase
+            .from('diagnostic_results')
             .insert({
-              assessor_id: user.id,
+              clinician_id: user.id,
               user_id: data.studentId ? null : user.id,
               student_id: data.studentId || null,
-              assessment_type: 'comprehensive',
-              status: 'completed',
-              started_at: new Date().toISOString(),
-              completed_at: new Date().toISOString(),
-            })
-            .select()
-            .single();
-
-          if (assessmentError) throw assessmentError;
-
-          // Then create the assessment result
-          const { error: resultError } = await supabase
-            .from('assessment_results')
-            .insert({
-              assessment_id: assessment.id,
-              overall_risk_score: riskScore,
-              reading_fluency_score: (data.results?.readingFluency || 0) / 100,
-              attention_score: data.results?.attentionScore || 0,
-              raw_data: {
-                eyeTracking: data.eyeTrackingData || {},
-                syncedAt: new Date().toISOString(),
-              },
+              session_id: data.sessionId || `offline-${Date.now()}`,
+              overall_risk_level: data.results?.overallRiskLevel || 'low',
+              dyslexia_probability_index: data.results?.dyslexiaProbabilityIndex || 0,
+              adhd_probability_index: data.results?.adhdProbabilityIndex || 0,
+              dysgraphia_probability_index: data.results?.dysgraphiaProbabilityIndex || 0,
+              eye_total_fixations: data.eyeTrackingData?.totalFixations || 0,
+              eye_avg_fixation_duration: data.eyeTrackingData?.avgFixationDuration || 0,
+              eye_regression_count: data.eyeTrackingData?.regressionCount || 0,
+              eye_chaos_index: data.eyeTrackingData?.chaosIndex || 0,
+              voice_words_per_minute: data.results?.voiceMetrics?.wpm || 0,
+              voice_fluency_score: data.results?.voiceMetrics?.fluencyScore || 0,
+              fixation_data: data.eyeTrackingData?.fixations || [],
+              saccade_data: data.eyeTrackingData?.saccades || [],
             });
 
           if (resultError) throw resultError;
-
-          // Store eye tracking data if available
-          if (data.eyeTrackingData) {
-            await supabase
-              .from('eye_tracking_data')
-              .insert({
-                assessment_id: assessment.id,
-                reading_speed_wpm: data.eyeTrackingData?.readingSpeedWpm || 0,
-                regression_count: data.eyeTrackingData?.regressionCount || 0,
-                average_fixation_duration: data.eyeTrackingData?.avgFixationDuration || 0,
-                fixation_points: data.eyeTrackingData?.fixations || [],
-                saccade_patterns: data.eyeTrackingData?.saccades || [],
-              });
-          }
         }
         
         return true;
@@ -213,6 +186,7 @@ export function useBackgroundSync() {
       studentName,
       results,
       eyeTrackingData,
+      sessionId: `session-${Date.now()}`,
       createdAt: new Date().toISOString(),
     }, 'high');
     
