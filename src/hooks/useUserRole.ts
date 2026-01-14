@@ -5,11 +5,11 @@ import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 
 // Define the app roles that match the database enum
-export type AppRole = 'clinician' | 'educator' | 'parent' | 'individual';
+export type AppRole = 'clinician' | 'educator' | 'parent' | 'admin';
 
 // Map UI role selection to database role
 export const UI_ROLE_TO_DB_ROLE: Record<string, AppRole> = {
-  individual: 'individual',
+  individual: 'parent',
   school: 'educator',
   pediatrician: 'clinician',
 };
@@ -40,14 +40,15 @@ export function useUserRole() {
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
-  // Mutation to set user role via the secure RPC function
+  // Mutation to set user role by inserting into user_roles table
   const setRoleMutation = useMutation({
     mutationFn: async (role: AppRole) => {
       if (!user) throw new Error('Not authenticated');
       
-      // Use the SECURITY DEFINER RPC function for secure role assignment
-      // This prevents privilege escalation by enforcing server-side validation
-      const { error } = await supabase.rpc('set_user_role', { _role: role });
+      // Insert the role directly into user_roles table
+      const { error } = await supabase
+        .from('user_roles')
+        .insert({ user_id: user.id, role: role });
       
       if (error) {
         if (error.message.includes('already set') || error.message.includes('duplicate') || error.code === '23505') {

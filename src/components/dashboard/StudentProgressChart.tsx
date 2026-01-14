@@ -22,7 +22,7 @@ interface ProgressDataPoint {
   date: string;
   overallRisk: number;
   fluencyScore: number;
-  chaosIndex: number;
+  attentionScore: number;
 }
 
 interface StudentProgressChartProps {
@@ -45,14 +45,14 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
 
       const { data, error } = await supabase
         .from('students')
-        .select('id, name')
-        .eq('clinician_id', user.id)
-        .order('name');
+        .select('id, first_name, last_name')
+        .eq('created_by', user.id)
+        .order('first_name');
 
       if (!error && data) {
         const formattedStudents = data.map(s => ({
           id: s.id,
-          name: s.name
+          name: `${s.first_name} ${s.last_name}`.trim()
         }));
         setStudents(formattedStudents);
         if (!selectedStudent && formattedStudents.length > 0) {
@@ -64,7 +64,7 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
     fetchStudents();
   }, [user, selectedStudent]);
 
-  // Fetch progress data for selected student using diagnostic_results
+  // Fetch progress data for selected student using assessments and assessment_results
   useEffect(() => {
     async function fetchProgressData() {
       if (!selectedStudent) {
@@ -91,28 +91,39 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
           break;
       }
 
-      // Get diagnostic results for this student
-      const { data, error } = await supabase
-        .from('diagnostic_results')
-        .select('*')
+      // Get assessments for this student with their results
+      const { data: assessments, error: assessmentsError } = await supabase
+        .from('assessments')
+        .select('id, created_at')
         .eq('student_id', selectedStudent)
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: true });
 
-      if (!error && data) {
-        const formattedData: ProgressDataPoint[] = data.map((record) => {
-          return {
-            date: new Date(record.created_at).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric'
-            }),
-            overallRisk: (record.dyslexia_probability_index ?? 0) * 100,
-            fluencyScore: record.voice_fluency_score ?? 0,
-            chaosIndex: (record.eye_chaos_index ?? 0) * 100,
-          };
-        });
-        
-        setProgressData(formattedData);
+      if (!assessmentsError && assessments && assessments.length > 0) {
+        // Get results for these assessments
+        const assessmentIds = assessments.map(a => a.id);
+        const { data: results, error: resultsError } = await supabase
+          .from('assessment_results')
+          .select('*')
+          .in('assessment_id', assessmentIds);
+
+        if (!resultsError && results) {
+          const formattedData: ProgressDataPoint[] = results.map((record) => {
+            return {
+              date: new Date(record.created_at).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+              }),
+              overallRisk: (record.overall_risk_score ?? 0) * 100,
+              fluencyScore: (record.reading_fluency_score ?? 0) * 100,
+              attentionScore: (record.attention_score ?? 0) * 100,
+            };
+          });
+          
+          setProgressData(formattedData);
+        }
+      } else {
+        setProgressData([]);
       }
 
       setIsLoading(false);
@@ -196,7 +207,7 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
                     <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="chaosGradient" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="attentionGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="hsl(var(--warning))" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="hsl(var(--warning))" stopOpacity={0} />
                   </linearGradient>
@@ -238,10 +249,10 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
                 />
                 <Area
                   type="monotone"
-                  dataKey="chaosIndex"
-                  name="Chaos Index"
+                  dataKey="attentionScore"
+                  name="Attention Score"
                   stroke="hsl(var(--warning))"
-                  fill="url(#chaosGradient)"
+                  fill="url(#attentionGradient)"
                   strokeWidth={2}
                 />
               </AreaChart>
@@ -263,10 +274,10 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
                   goodDirection: 'up'
                 },
                 { 
-                  key: 'chaosIndex' as const, 
-                  label: 'Chaos Index', 
+                  key: 'attentionScore' as const, 
+                  label: 'Attention', 
                   color: 'warning',
-                  goodDirection: 'down'
+                  goodDirection: 'up'
                 },
               ].map(item => {
                 const trend = calculateTrend(progressData, item.key);
