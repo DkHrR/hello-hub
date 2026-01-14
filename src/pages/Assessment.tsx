@@ -25,7 +25,8 @@ import { useAssessmentController } from '@/hooks/useAssessmentController';
 import { useSessionPersistence } from '@/hooks/useSessionPersistence';
 import { useRealTimeNotifications } from '@/hooks/useRealTimeNotifications';
 import { getPassageForGrade } from '@/data/readingPassages';
-import { getRegionalPassageForGrade, availableLanguages, getSpeechLocale } from '@/data/regionalPassages';
+import { getRegionalPassageForGrade, availableLanguages } from '@/data/regionalPassages';
+import { getSpeechLocale, type SupportedLanguage } from '@/data/phoneticPatterns';
 import { 
   Eye, 
   Mic, 
@@ -84,6 +85,7 @@ export default function AssessmentPage() {
     studentName: studentData?.name || 'Student',
     studentAge: studentData?.age || 10,
     studentGrade: studentData?.grade || '4th Grade',
+    language: (studentData?.language || 'en') as SupportedLanguage,
     onComplete: (result) => {
       // Notify via real-time notifications
       notifyAssessmentComplete({
@@ -530,17 +532,17 @@ export default function AssessmentPage() {
 
                     <div className="flex items-center gap-4">
                       {!controller.speechRecognition.isListening ? (
-                        <Button variant="hero" onClick={controller.speechRecognition.start}>
+                        <Button variant="hero" onClick={() => controller.speechRecognition.start()}>
                           <Play className="w-4 h-4" />
                           Start Recording
                         </Button>
                       ) : (
-                        <Button variant="destructive" onClick={controller.speechRecognition.stop}>
+                        <Button variant="destructive" onClick={() => controller.speechRecognition.stop()}>
                           <Square className="w-4 h-4" />
                           Stop Recording
                         </Button>
                       )}
-                      <Button variant="outline" onClick={controller.speechRecognition.reset}>
+                      <Button variant="outline" onClick={() => controller.speechRecognition.reset()}>
                         <RotateCcw className="w-4 h-4" />
                         Reset
                       </Button>

@@ -1,27 +1,50 @@
 import { useState, useCallback } from 'react';
 import Tesseract from 'tesseract.js';
 import type { HandwritingMetrics } from '@/types/diagnostic';
+import { 
+  getTesseractLanguage, 
+  detectCharacterConfusions,
+  type SupportedLanguage 
+} from '@/data/phoneticPatterns';
 import logger from '@/lib/logger';
 
 interface CharacterAnalysis {
-  reversals: { char: string; position: number; context: string }[];
+  reversals: { char: string; position: number; context: string; description: string }[];
   crowdingScore: number;
   inconsistencyScore: number;
   lineAdherence: number;
 }
 
-export function useHandwritingAnalysis() {
+interface UseHandwritingAnalysisOptions {
+  language?: SupportedLanguage;
+}
+
+export function useHandwritingAnalysis(options: UseHandwritingAnalysisOptions = {}) {
+  const { language: initialLanguage = 'en' } = options;
+  
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [recognizedText, setRecognizedText] = useState('');
   const [characterAnalysis, setCharacterAnalysis] = useState<CharacterAnalysis | null>(null);
+  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>(initialLanguage);
 
-  const analyzeImage = useCallback(async (imageSource: string | File): Promise<HandwritingMetrics> => {
+  // Set language dynamically
+  const setLanguage = useCallback((lang: SupportedLanguage) => {
+    setCurrentLanguage(lang);
+  }, []);
+
+  const analyzeImage = useCallback(async (
+    imageSource: string | File, 
+    language?: SupportedLanguage
+  ): Promise<HandwritingMetrics> => {
     setIsAnalyzing(true);
     setProgress(0);
 
+    const analysisLanguage = language || currentLanguage;
+    const tesseractLang = getTesseractLanguage(analysisLanguage);
+
     try {
-      const result = await Tesseract.recognize(imageSource, 'eng', {
+      const result = await Tesseract.recognize(imageSource, tesseractLang, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
             setProgress(Math.round(m.progress * 100));
@@ -32,8 +55,20 @@ export function useHandwritingAnalysis() {
       const text = result.data.text;
       setRecognizedText(text);
 
-      // Analyze for character reversals
-      const reversals = detectReversals(text);
+      // Analyze for character reversals using language-specific patterns
+      const confusions = detectCharacterConfusions(text, analysisLanguage);
+      const reversals: CharacterAnalysis['reversals'] = confusions.map(c => ({
+        char: c.char,
+        position: c.position,
+        context: c.context,
+        description: c.description
+      }));
+      
+      // Also detect English-style b/d reversals if using Latin script
+      if (analysisLanguage === 'en') {
+        const bdReversals = detectEnglishReversals(text);
+        reversals.push(...bdReversals);
+      }
       
       // Analyze using confidence from result
       const crowdingScore = analyzeTextCrowding(text);
@@ -62,9 +97,9 @@ export function useHandwritingAnalysis() {
       setIsAnalyzing(false);
       throw error;
     }
-  }, []);
+  }, [currentLanguage]);
 
-  const detectReversals = (text: string): CharacterAnalysis['reversals'] => {
+  const detectEnglishReversals = (text: string): CharacterAnalysis['reversals'] => {
     const reversals: CharacterAnalysis['reversals'] = [];
     const words = text.toLowerCase().split(/\s+/);
     
@@ -82,7 +117,8 @@ export function useHandwritingAnalysis() {
           reversals.push({
             char: 'b↔d',
             position: wordIndex,
-            context: `"${word}" (expected: "${expected}")`
+            context: `"${word}" (expected: "${expected}")`,
+            description: 'b/d reversal'
           });
         }
       });
@@ -130,7 +166,9 @@ export function useHandwritingAnalysis() {
     progress,
     recognizedText,
     characterAnalysis,
+    currentLanguage,
     analyzeImage,
+    setLanguage,
     reset
   };
 }
