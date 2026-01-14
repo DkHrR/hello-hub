@@ -5,18 +5,21 @@ import { supabase } from '@/integrations/supabase/client';
 // Profile interface matching the actual profiles table schema
 interface Profile {
   id: string;
-  full_name: string | null;
-  email: string | null;
+  user_id: string;
+  display_name: string | null;
   first_name: string | null;
   last_name: string | null;
+  email: string | null;
   avatar_url: string | null;
   organization: string | null;
+  title: string | null;
   email_verified: boolean;
   email_preferences: {
     assessment_reports: boolean;
     weekly_summary: boolean;
     password_change: boolean;
     welcome_email: boolean;
+    confirmation_email: boolean;
   } | null;
   created_at: string;
   updated_at: string;
@@ -33,6 +36,7 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   profile: Profile | null;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -77,12 +81,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, email, first_name, last_name, avatar_url, organization, email_verified, email_preferences, created_at, updated_at')
-      .eq('id', userId)
+      .select('*')
+      .eq('user_id', userId)
       .maybeSingle();
     
     if (!error && data) {
-      setProfile(data as Profile);
+      setProfile({
+        id: data.id,
+        user_id: data.user_id,
+        display_name: data.display_name,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email,
+        avatar_url: data.avatar_url,
+        organization: data.organization,
+        title: data.title,
+        email_verified: data.email_verified ?? false,
+        email_preferences: data.email_preferences as Profile['email_preferences'],
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+      });
+    }
+  };
+
+  const refreshProfile = async () => {
+    if (user) {
+      await fetchProfile(user.id);
     }
   };
 
@@ -97,7 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         emailRedirectTo: redirectUrl,
         data: {
           display_name: displayName || email.split('@')[0],
-          full_name: displayName || email.split('@')[0],
         }
       }
     });
@@ -158,7 +181,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithGoogle,
       resetPassword,
       signOut,
-      profile
+      profile,
+      refreshProfile
     }}>
       {children}
     </AuthContext.Provider>

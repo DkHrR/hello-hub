@@ -45,14 +45,14 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
 
       const { data, error } = await supabase
         .from('students')
-        .select('id, first_name, last_name')
-        .eq('created_by', user.id)
-        .order('first_name');
+        .select('id, name')
+        .eq('clinician_id', user.id)
+        .order('name');
 
       if (!error && data) {
         const formattedStudents = data.map(s => ({
           id: s.id,
-          name: `${s.first_name} ${s.last_name}`.trim()
+          name: s.name
         }));
         setStudents(formattedStudents);
         if (!selectedStudent && formattedStudents.length > 0) {
@@ -64,7 +64,7 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
     fetchStudents();
   }, [user, selectedStudent]);
 
-  // Fetch progress data for selected student using assessments and assessment_results
+  // Fetch progress data for selected student using diagnostic_results
   useEffect(() => {
     async function fetchProgressData() {
       if (!selectedStudent) {
@@ -91,37 +91,35 @@ export function StudentProgressChart({ studentId, className }: StudentProgressCh
           break;
       }
 
-      // Get assessments for this student with their results
-      const { data: assessments, error: assessmentsError } = await supabase
-        .from('assessments')
-        .select('id, created_at')
+      // Get diagnostic results for this student
+      const { data: results, error } = await supabase
+        .from('diagnostic_results')
+        .select('*')
         .eq('student_id', selectedStudent)
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: true });
 
-      if (!assessmentsError && assessments && assessments.length > 0) {
-        // Get results for these assessments
-        const assessmentIds = assessments.map(a => a.id);
-        const { data: results, error: resultsError } = await supabase
-          .from('assessment_results')
-          .select('*')
-          .in('assessment_id', assessmentIds);
-
-        if (!resultsError && results) {
-          const formattedData: ProgressDataPoint[] = results.map((record) => {
-            return {
-              date: new Date(record.created_at).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric'
-              }),
-              overallRisk: (record.overall_risk_score ?? 0) * 100,
-              fluencyScore: (record.reading_fluency_score ?? 0) * 100,
-              attentionScore: (record.attention_score ?? 0) * 100,
-            };
-          });
+      if (!error && results && results.length > 0) {
+        const formattedData: ProgressDataPoint[] = results.map((record) => {
+          // Calculate risk score from probability index
+          const riskScore = (record.dyslexia_probability_index ?? 0) * 100;
+          // Use fluency score directly
+          const fluencyScore = record.voice_fluency_score ?? 0;
+          // Calculate attention score inversely from ADHD probability
+          const attentionScore = 100 - ((record.adhd_probability_index ?? 0) * 100);
           
-          setProgressData(formattedData);
-        }
+          return {
+            date: new Date(record.created_at).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric'
+            }),
+            overallRisk: riskScore,
+            fluencyScore: fluencyScore,
+            attentionScore: attentionScore,
+          };
+        });
+        
+        setProgressData(formattedData);
       } else {
         setProgressData([]);
       }
