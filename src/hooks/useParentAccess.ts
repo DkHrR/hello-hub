@@ -1,6 +1,6 @@
 /**
  * Parent Access Hook
- * Manages parent portal access via parent_student_links table
+ * Manages parent portal access via parent_access_tokens table
  */
 
 import { useState, useCallback } from 'react';
@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
 import type { Tables } from '@/integrations/supabase/types';
 
-type ParentStudentLink = Tables<'parent_student_links'>;
+type ParentAccessToken = Tables<'parent_access_tokens'>;
 
 interface CreateLinkParams {
   studentId: string;
@@ -18,7 +18,7 @@ interface CreateLinkParams {
 
 export function useParentAccess() {
   const { toast } = useToast();
-  const [links, setLinks] = useState<ParentStudentLink[]>([]);
+  const [links, setLinks] = useState<ParentAccessToken[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +34,7 @@ export function useParentAccess() {
   const createLink = useCallback(async ({
     studentId,
     expiresInDays = 7,
-  }: CreateLinkParams): Promise<ParentStudentLink | null> => {
+  }: CreateLinkParams): Promise<ParentAccessToken | null> => {
     setIsLoading(true);
     setError(null);
 
@@ -47,11 +47,11 @@ export function useParentAccess() {
       expiresAt.setDate(expiresAt.getDate() + expiresInDays);
 
       const { data, error: insertError } = await supabase
-        .from('parent_student_links')
+        .from('parent_access_tokens')
         .insert({
           student_id: studentId,
           access_code: accessCode,
-          linked_by: user.id,
+          created_by: user.id,
           expires_at: expiresAt.toISOString(),
         })
         .select()
@@ -83,10 +83,10 @@ export function useParentAccess() {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('parent_student_links')
+        .from('parent_access_tokens')
         .select('*')
         .eq('student_id', studentId)
-        .order('linked_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setLinks(data || []);

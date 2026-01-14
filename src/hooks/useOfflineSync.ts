@@ -97,27 +97,59 @@ export function useOfflineSync() {
     if (!user) return false;
 
     try {
-      // Insert directly into diagnostic_results table
-      const { error } = await supabase
-        .from('diagnostic_results')
+      // First create an assessment
+      const { data: assessment, error: assessmentError } = await supabase
+        .from('assessments')
         .insert({
-          clinician_id: user.id,
+          assessor_id: user.id,
           user_id: result.studentId ? null : user.id,
           student_id: result.studentId || null,
-          session_id: result.id,
-          dyslexia_probability_index: result.results?.dyslexiaProbabilityIndex || 0,
-          adhd_probability_index: result.results?.adhdProbabilityIndex || 0,
-          dysgraphia_probability_index: result.results?.dysgraphiaProbabilityIndex || 0,
-          overall_risk_level: result.results?.overallRiskLevel || 'low',
-          eye_total_fixations: result.eyeTrackingData?.totalFixations || 0,
-          eye_avg_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
-          eye_regression_count: result.eyeTrackingData?.regressionCount || 0,
-          eye_chaos_index: result.eyeTrackingData?.chaosIndex || 0,
-          fixation_data: result.eyeTrackingData?.fixations || [],
-          saccade_data: result.eyeTrackingData?.saccades || [],
+          assessment_type: 'comprehensive',
+          status: 'completed',
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (assessmentError) throw assessmentError;
+
+      // Calculate risk score
+      const riskScore = result.results?.dyslexiaProbabilityIndex || 
+                        (result.results?.overallRiskLevel === 'high' ? 0.8 : 
+                         result.results?.overallRiskLevel === 'moderate' ? 0.5 : 0.2);
+
+      // Then create the assessment result
+      const { error: resultError } = await supabase
+        .from('assessment_results')
+        .insert({
+          assessment_id: assessment.id,
+          overall_risk_score: riskScore,
+          reading_fluency_score: (result.results?.readingFluency || 0) / 100,
+          attention_score: result.results?.attentionScore || 0,
+          raw_data: {
+            results: result.results,
+            eyeTracking: result.eyeTrackingData,
+            syncedAt: new Date().toISOString(),
+          },
         });
 
-      if (error) throw error;
+      if (resultError) throw resultError;
+
+      // Store eye tracking data if available
+      if (result.eyeTrackingData) {
+        await supabase
+          .from('eye_tracking_data')
+          .insert({
+            assessment_id: assessment.id,
+            reading_speed_wpm: result.eyeTrackingData?.readingSpeedWpm || 0,
+            regression_count: result.eyeTrackingData?.regressionCount || 0,
+            average_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
+            fixation_points: result.eyeTrackingData?.fixations || [],
+            saccade_patterns: result.eyeTrackingData?.saccades || [],
+          });
+      }
+
       return true;
     } catch (error) {
       logger.error('Failed to sync result', error);

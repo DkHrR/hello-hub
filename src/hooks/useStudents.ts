@@ -7,9 +7,11 @@ import type { Tables } from '@/integrations/supabase/types';
 
 // Zod schemas for input validation - matches actual database schema
 const studentInsertSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
-  age: z.number().min(3, 'Age must be at least 3').max(25, 'Age must be at most 25'),
-  grade: z.string().max(20, 'Grade must be less than 20 characters'),
+  first_name: z.string().trim().min(1, 'First name is required').max(100, 'First name must be less than 100 characters'),
+  last_name: z.string().trim().min(1, 'Last name is required').max(100, 'Last name must be less than 100 characters'),
+  grade_level: z.string().max(20, 'Grade must be less than 20 characters').nullable().optional(),
+  date_of_birth: z.string().nullable().optional(),
+  school: z.string().max(200, 'School name must be less than 200 characters').nullable().optional(),
   notes: z.string().max(2000, 'Notes must be less than 2000 characters').nullable().optional(),
 });
 
@@ -19,16 +21,20 @@ const studentUpdateSchema = studentInsertSchema.partial();
 type Student = Tables<'students'>;
 
 export interface StudentInsert {
-  name: string;
-  age: number;
-  grade: string;
+  first_name: string;
+  last_name: string;
+  grade_level?: string | null;
+  date_of_birth?: string | null;
+  school?: string | null;
   notes?: string | null;
 }
 
 export interface StudentUpdate {
-  name?: string;
-  age?: number;
-  grade?: string;
+  first_name?: string;
+  last_name?: string;
+  grade_level?: string | null;
+  date_of_birth?: string | null;
+  school?: string | null;
   notes?: string | null;
 }
 
@@ -42,7 +48,7 @@ export function useStudents() {
       const { data, error } = await supabase
         .from('students')
         .select('*')
-        .eq('clinician_id', user!.id)
+        .eq('created_by', user!.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -61,11 +67,13 @@ export function useStudents() {
       const { data, error } = await supabase
         .from('students')
         .insert([{
-          name: validated.name,
-          age: validated.age,
-          grade: validated.grade,
+          first_name: validated.first_name,
+          last_name: validated.last_name,
+          grade_level: validated.grade_level || null,
+          date_of_birth: validated.date_of_birth || null,
+          school: validated.school || null,
           notes: validated.notes || null,
-          clinician_id: user.id,
+          created_by: user.id,
         }])
         .select()
         .single();
@@ -132,9 +140,9 @@ export function useStudents() {
     },
   });
 
-  // Helper to get full name (just returns name since we have single column)
+  // Helper to get full name
   const getStudentFullName = (student: Student): string => {
-    return student.name;
+    return `${student.first_name} ${student.last_name}`.trim();
   };
 
   return {
