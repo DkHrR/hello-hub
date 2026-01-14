@@ -241,14 +241,14 @@ export function useDiagnosticEngine() {
     // Then create the assessment result
     const { data: resultData, error: resultError } = await supabase
       .from('assessment_results')
-      .insert({
+      .insert([{
         assessment_id: assessment.id,
         overall_risk_score: result.dyslexiaProbabilityIndex,
         reading_fluency_score: result.voice.fluencyScore / 100,
         phonological_awareness_score: 1 - (result.voice.phonemicErrors / 10),
         visual_processing_score: 1 - result.eyeTracking.chaosIndex,
         attention_score: 1 - result.adhdProbabilityIndex,
-        raw_data: {
+        raw_data: JSON.parse(JSON.stringify({
           eyeTracking: result.eyeTracking,
           voice: result.voice,
           handwriting: result.handwriting,
@@ -258,13 +258,13 @@ export function useDiagnosticEngine() {
           dysgraphiaProbabilityIndex: result.dysgraphiaProbabilityIndex,
           overallRiskLevel: result.overallRiskLevel,
           sessionId: sessionId,
-        },
+        })),
         dyslexia_biomarkers: {
           chaosIndex: result.eyeTracking.chaosIndex,
           regressionCount: result.eyeTracking.regressionCount,
           fixationIntersectionCoefficient: result.eyeTracking.fixationIntersectionCoefficient,
         },
-      })
+      }])
       .select()
       .single();
 
