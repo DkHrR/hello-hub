@@ -1,5 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { VoiceMetrics } from '@/types/diagnostic';
+import { 
+  getSpeechLocale, 
+  getHesitationPattern, 
+  calculateLanguageAwareFluency,
+  type SupportedLanguage 
+} from '@/data/phoneticPatterns';
 
 interface SpeechRecognitionEvent {
   results: SpeechRecognitionResultList;
@@ -32,7 +38,14 @@ export interface StallEvent {
   wordAfter: string;
 }
 
-export function useSpeechRecognition() {
+interface UseSpeechRecognitionOptions {
+  language?: SupportedLanguage;
+  grade?: string;
+}
+
+export function useSpeechRecognition(options: UseSpeechRecognitionOptions = {}) {
+  const { language = 'en', grade = 'default' } = options;
+  
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -41,6 +54,8 @@ export function useSpeechRecognition() {
   const [stallEvents, setStallEvents] = useState<StallEvent[]>([]);
   const [currentStallDuration, setCurrentStallDuration] = useState(0);
   const [isStalling, setIsStalling] = useState(false);
+  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>(language);
+  const [currentGrade, setCurrentGrade] = useState(grade);
   
   const recognitionRef = useRef<any>(null);
   const startTimeRef = useRef<number>(0);
@@ -53,7 +68,19 @@ export function useSpeechRecognition() {
   const PAUSE_THRESHOLD = 500; // ms - detect pauses longer than this
   const STALL_THRESHOLD = 1500; // ms - detect stalls (hesitation) longer than 1.5s
 
-  const initialize = useCallback(() => {
+  // Set language dynamically
+  const setLanguage = useCallback((lang: SupportedLanguage, studentGrade?: string) => {
+    setCurrentLanguage(lang);
+    if (studentGrade) {
+      setCurrentGrade(studentGrade);
+    }
+    // Update recognition language if already initialized
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = getSpeechLocale(lang);
+    }
+  }, []);
+
+  const initialize = useCallback((locale?: string) => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
@@ -64,7 +91,9 @@ export function useSpeechRecognition() {
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
-    recognitionRef.current.lang = 'en-US';
+    
+    // Use provided locale, or derive from currentLanguage
+    recognitionRef.current.lang = locale || getSpeechLocale(currentLanguage);
     
     recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
       const currentTime = Date.now() - startTimeRef.current;
@@ -141,7 +170,7 @@ export function useSpeechRecognition() {
     };
     
     return true;
-  }, [isListening]);
+  }, [isListening, currentLanguage]);
 
   // Stall detection interval - checks every 100ms if user is stalling
   const startStallDetection = useCallback(() => {
@@ -196,9 +225,12 @@ export function useSpeechRecognition() {
     }
   }, []);
 
-  const start = useCallback(() => {
+  const start = useCallback((locale?: string) => {
     if (!recognitionRef.current) {
-      if (!initialize()) return;
+      if (!initialize(locale)) return;
+    } else if (locale) {
+      // Update locale if provided
+      recognitionRef.current.lang = locale;
     }
     
     try {
@@ -245,14 +277,18 @@ export function useSpeechRecognition() {
       ? pauseEvents.reduce((sum, p) => sum + (p.end - p.start), 0) / pauseEvents.length
       : 0;
     
-    // Detect phonemic errors (simplified - words that might indicate struggle)
-    const errorPatterns = /\b(um|uh|er|ah)\b/gi;
-    const phonemicErrors = (transcript.match(errorPatterns) || []).length;
+    // Detect phonemic errors using language-specific patterns
+    const errorPattern = getHesitationPattern(currentLanguage);
+    const phonemicErrors = (transcript.match(errorPattern) || []).length;
     
-    // Calculate fluency score (0-100)
-    const pausePenalty = Math.min(pauseEvents.length * 5, 50);
-    const errorPenalty = Math.min(phonemicErrors * 10, 30);
-    const fluencyScore = Math.max(0, 100 - pausePenalty - errorPenalty);
+    // Calculate fluency score using language-aware algorithm
+    const fluencyScore = calculateLanguageAwareFluency(
+      Math.round(wordsPerMinute),
+      pauseEvents.length,
+      phonemicErrors,
+      currentLanguage,
+      currentGrade
+    );
     
     // Prosody score (simplified - based on timing variance)
     let prosodyScore = 70;
@@ -288,7 +324,7 @@ export function useSpeechRecognition() {
       averageStallDuration: Math.round(avgStallDuration),
       stallEvents
     };
-  }, [transcript, wordTimings, pauseEvents, stallEvents]);
+  }, [transcript, wordTimings, pauseEvents, stallEvents, currentLanguage, currentGrade]);
 
   useEffect(() => {
     return () => {
@@ -306,9 +342,11 @@ export function useSpeechRecognition() {
     stallEvents,
     isStalling,
     currentStallDuration,
+    currentLanguage,
     start,
     stop,
     reset,
-    getMetrics
+    getMetrics,
+    setLanguage
   };
 }

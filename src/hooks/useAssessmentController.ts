@@ -5,6 +5,7 @@ import { useCognitiveLoad } from './useCognitiveLoad';
 import { useHandwritingAnalysis } from './useHandwritingAnalysis';
 import { useDiagnosticEngine } from './useDiagnosticEngine';
 import { useAuth } from '@/contexts/AuthContext';
+import { getSpeechLocale, type SupportedLanguage } from '@/data/phoneticPatterns';
 import logger from '@/lib/logger';
 import type { 
   DiagnosticResult, 
@@ -46,21 +47,26 @@ interface UseAssessmentControllerOptions {
   studentName?: string;
   studentAge?: number;
   studentGrade?: string;
+  language?: SupportedLanguage;
   onComplete?: (result: DiagnosticResult) => void;
 }
 
 export function useAssessmentController(options: UseAssessmentControllerOptions = {}) {
-  const { studentId, onComplete } = options;
+  const { studentId, studentGrade = 'default', language = 'en', onComplete } = options;
   
   // Auth hook for self-assessments
   const { user } = useAuth();
   
   // All the hooks - using unified MediaPipe eye tracking
   const eyeTracking = useUnifiedEyeTracking();
-  const speechRecognition = useSpeechRecognition();
+  const speechRecognition = useSpeechRecognition({ language, grade: studentGrade });
   const cognitiveLoad = useCognitiveLoad();
-  const handwritingAnalysis = useHandwritingAnalysis();
+  const handwritingAnalysis = useHandwritingAnalysis({ language });
   const diagnosticEngine = useDiagnosticEngine();
+  
+  // Current language state (can be updated dynamically)
+  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>(language);
+  const [currentGrade, setCurrentGrade] = useState(studentGrade);
   
   // Assessment state
   const [step, setStep] = useState<AssessmentStep>('intro');
@@ -76,6 +82,16 @@ export function useAssessmentController(options: UseAssessmentControllerOptions 
   const [stallPosition, setStallPosition] = useState<{ x: number; y: number } | null>(null);
   const [stallDuration, setStallDuration] = useState(0);
   const wordPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  
+  // Update language dynamically
+  const updateLanguage = useCallback((lang: SupportedLanguage, grade?: string) => {
+    setCurrentLanguage(lang);
+    if (grade) setCurrentGrade(grade);
+    
+    // Update child hooks
+    speechRecognition.setLanguage(lang, grade);
+    handwritingAnalysis.setLanguage(lang);
+  }, [speechRecognition, handwritingAnalysis]);
   
   // Start assessment - go to calibration
   const startAssessment = useCallback(() => {
@@ -105,9 +121,11 @@ export function useAssessmentController(options: UseAssessmentControllerOptions 
     setEyeMetrics(metrics);
     
     eyeTracking.stop();
-    speechRecognition.start();
+    // Start speech recognition with correct locale
+    const locale = getSpeechLocale(currentLanguage);
+    speechRecognition.start(locale);
     setStep('voice');
-  }, [eyeTracking, speechRecognition]);
+  }, [eyeTracking, speechRecognition, currentLanguage]);
   
   // Move to handwriting test (optional)
   const startHandwritingTest = useCallback(() => {
@@ -271,6 +289,11 @@ export function useAssessmentController(options: UseAssessmentControllerOptions 
     result,
     isProcessing,
     
+    // Language state
+    currentLanguage,
+    currentGrade,
+    updateLanguage,
+    
     // Gaze tutor state
     stallWord,
     stallPosition,
@@ -298,10 +321,12 @@ export function useAssessmentController(options: UseAssessmentControllerOptions 
       isStalling: speechRecognition.isStalling,
       currentStallDuration: speechRecognition.currentStallDuration,
       stallEvents: speechRecognition.stallEvents,
+      currentLanguage: speechRecognition.currentLanguage,
       start: speechRecognition.start,
       stop: speechRecognition.stop,
       reset: speechRecognition.reset,
-      getMetrics: speechRecognition.getMetrics
+      getMetrics: speechRecognition.getMetrics,
+      setLanguage: speechRecognition.setLanguage
     },
     
     // Cognitive load passthrough
@@ -316,7 +341,9 @@ export function useAssessmentController(options: UseAssessmentControllerOptions 
       isAnalyzing: handwritingAnalysis.isAnalyzing,
       progress: handwritingAnalysis.progress,
       recognizedText: handwritingAnalysis.recognizedText,
-      analyzeImage: handwritingAnalysis.analyzeImage
+      currentLanguage: handwritingAnalysis.currentLanguage,
+      analyzeImage: handwritingAnalysis.analyzeImage,
+      setLanguage: handwritingAnalysis.setLanguage
     },
     
     // Actions
