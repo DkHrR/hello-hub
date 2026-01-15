@@ -34,29 +34,15 @@ import {
   Plus,
   Mail
 } from 'lucide-react';
-import { format, differenceInYears } from 'date-fns';
+import { format } from 'date-fns';
 import type { Tables } from '@/integrations/supabase/types';
 
 type Student = Tables<'students'>;
-type AssessmentResult = Tables<'assessment_results'>;
+type DiagnosticResult = Tables<'diagnostic_results'>;
 
-// Helper to calculate age from date_of_birth
-const calculateAge = (dateOfBirth: string | null): number | null => {
-  if (!dateOfBirth) return null;
-  return differenceInYears(new Date(), new Date(dateOfBirth));
-};
-
-// Helper to get full name
-const getFullName = (student: Student): string => {
-  return `${student.first_name} ${student.last_name}`;
-};
-
-// Helper to determine risk level from overall_risk_score
-const getRiskLevelFromScore = (score: number | null): string => {
-  if (score === null) return 'unknown';
-  if (score >= 0.6) return 'high';
-  if (score >= 0.3) return 'moderate';
-  return 'low';
+// Helper to determine risk level from overall_risk_level
+const getRiskLevelFromResult = (result: DiagnosticResult): string => {
+  return result.overall_risk_level || 'low';
 };
 
 export default function StudentProfilePage() {
@@ -65,7 +51,7 @@ export default function StudentProfilePage() {
   const { user } = useAuth();
   
   const [student, setStudent] = useState<Student | null>(null);
-  const [assessmentResults, setAssessmentResults] = useState<AssessmentResult[]>([]);
+  const [diagnosticResults, setDiagnosticResults] = useState<DiagnosticResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -92,31 +78,15 @@ export default function StudentProfilePage() {
 
       setStudent(studentData);
 
-      // Fetch assessments for this student
-      const { data: assessmentsData, error: assessmentsError } = await supabase
-        .from('assessments')
-        .select('id')
-        .eq('student_id', studentId);
+      // Fetch diagnostic results for this student
+      const { data: resultsData, error: resultsError } = await supabase
+        .from('diagnostic_results')
+        .select('*')
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false });
 
-      if (assessmentsError) {
-        logger.error('Error fetching assessments', assessmentsError);
-        setIsLoading(false);
-        return;
-      }
-
-      if (assessmentsData && assessmentsData.length > 0) {
-        const assessmentIds = assessmentsData.map(a => a.id);
-        
-        // Fetch assessment results
-        const { data: resultsData, error: resultsError } = await supabase
-          .from('assessment_results')
-          .select('*')
-          .in('assessment_id', assessmentIds)
-          .order('created_at', { ascending: false });
-
-        if (!resultsError && resultsData) {
-          setAssessmentResults(resultsData);
-        }
+      if (!resultsError && resultsData) {
+        setDiagnosticResults(resultsData);
       }
 
       setIsLoading(false);
@@ -126,27 +96,27 @@ export default function StudentProfilePage() {
   }, [studentId, user, navigate]);
 
   // Get latest result
-  const getLatestResult = (): AssessmentResult | null => {
-    if (assessmentResults.length === 0) return null;
-    return assessmentResults[0];
+  const getLatestResult = (): DiagnosticResult | null => {
+    if (diagnosticResults.length === 0) return null;
+    return diagnosticResults[0];
   };
 
   // Get risk level from result
-  const getRiskLevel = (result: AssessmentResult | null): string => {
+  const getRiskLevel = (result: DiagnosticResult | null): string => {
     if (!result) return 'unknown';
-    return getRiskLevelFromScore(result.overall_risk_score);
+    return getRiskLevelFromResult(result);
   };
 
   // Prepare progress chart data
   const getProgressData = () => {
-    return assessmentResults
+    return diagnosticResults
       .slice(0, 10)
       .reverse()
       .map((result, index) => ({
         name: `Test ${index + 1}`,
         date: format(new Date(result.created_at), 'MMM d'),
-        fluency: Math.round((result.reading_fluency_score ?? 0) * 100),
-        dyslexiaRisk: Math.round((result.overall_risk_score ?? 0) * 100),
+        fluency: result.voice_fluency_score ?? 0,
+        dyslexiaRisk: Math.round((result.dyslexia_probability_index ?? 0) * 100),
       }));
   };
 
@@ -192,8 +162,6 @@ export default function StudentProfilePage() {
     );
   }
 
-  const studentAge = calculateAge(student.date_of_birth);
-
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -217,15 +185,15 @@ export default function StudentProfilePage() {
                   <User className="w-8 h-8 text-primary-foreground" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold">{getFullName(student)}</h1>
+                  <h1 className="text-3xl font-bold">{student.name}</h1>
                   <div className="flex items-center gap-4 text-muted-foreground mt-1">
                     <span className="flex items-center gap-1">
                       <School className="w-4 h-4" />
-                      Grade {student.grade_level || 'N/A'}
+                      Grade {student.grade}
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" />
-                      {studentAge !== null ? `${studentAge} years old` : 'Age N/A'}
+                      {student.age} years old
                     </span>
                   </div>
                 </div>
@@ -261,7 +229,7 @@ export default function StudentProfilePage() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Total Tests</p>
-                        <p className="text-2xl font-bold">{assessmentResults.length}</p>
+                        <p className="text-2xl font-bold">{diagnosticResults.length}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -276,8 +244,8 @@ export default function StudentProfilePage() {
                       <div>
                         <p className="text-sm text-muted-foreground">Fluency Score</p>
                         <p className="text-2xl font-bold">
-                          {latestResult?.reading_fluency_score !== null && latestResult?.reading_fluency_score !== undefined
-                            ? Math.round(latestResult.reading_fluency_score * 100) + '%'
+                          {latestResult?.voice_fluency_score !== null && latestResult?.voice_fluency_score !== undefined
+                            ? latestResult.voice_fluency_score + '%'
                             : 'N/A'}
                         </p>
                       </div>
@@ -294,8 +262,8 @@ export default function StudentProfilePage() {
                       <div>
                         <p className="text-sm text-muted-foreground">Risk Score</p>
                         <p className="text-2xl font-bold">
-                          {latestResult?.overall_risk_score !== null && latestResult?.overall_risk_score !== undefined
-                            ? `${Math.round(latestResult.overall_risk_score * 100)}%`
+                          {latestResult?.dyslexia_probability_index !== null && latestResult?.dyslexia_probability_index !== undefined
+                            ? `${Math.round(Number(latestResult.dyslexia_probability_index) * 100)}%`
                             : 'N/A'}
                         </p>
                       </div>
@@ -373,10 +341,10 @@ export default function StudentProfilePage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Assessment History</CardTitle>
-                  <CardDescription>All assessment results for this student</CardDescription>
+                  <CardDescription>All diagnostic results for this student</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {assessmentResults.length === 0 ? (
+                  {diagnosticResults.length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
                       <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>No assessments yet</p>
@@ -390,7 +358,7 @@ export default function StudentProfilePage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {assessmentResults.map((result) => (
+                      {diagnosticResults.map((result) => (
                         <div
                           key={result.id}
                           className="p-4 rounded-lg border border-border hover:border-primary/50 transition-colors"
@@ -399,7 +367,7 @@ export default function StudentProfilePage() {
                             <div>
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline">{result.id.slice(0, 8)}</Badge>
-                                {getRiskBadge(getRiskLevelFromScore(result.overall_risk_score))}
+                                {getRiskBadge(getRiskLevelFromResult(result))}
                               </div>
                               <p className="text-sm text-muted-foreground mt-1">
                                 {format(new Date(result.created_at), 'PPp')}
@@ -409,8 +377,8 @@ export default function StudentProfilePage() {
                               <div className="text-right">
                                 <p className="text-sm text-muted-foreground">Risk Score</p>
                                 <p className="text-lg font-bold">
-                                  {result.overall_risk_score !== null
-                                    ? `${Math.round(result.overall_risk_score * 100)}%`
+                                  {result.dyslexia_probability_index !== null
+                                    ? `${Math.round(Number(result.dyslexia_probability_index) * 100)}%`
                                     : 'N/A'}
                                 </p>
                               </div>
@@ -447,12 +415,19 @@ export default function StudentProfilePage() {
                     <div className="text-center py-12 text-muted-foreground">
                       <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>Need at least 2 assessments to show progress</p>
+                      <Button 
+                        variant="default" 
+                        className="mt-4"
+                        onClick={() => navigate(`/assessment?studentId=${studentId}`)}
+                      >
+                        Run New Assessment
+                      </Button>
                     </div>
                   ) : (
                     <ResponsiveContainer width="100%" height={400}>
                       <AreaChart data={progressData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                        <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                        <XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                         <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} domain={[0, 100]} />
                         <Tooltip
                           contentStyle={{
@@ -472,7 +447,7 @@ export default function StudentProfilePage() {
                           type="monotone"
                           dataKey="dyslexiaRisk"
                           stroke="hsl(var(--destructive))"
-                          fill="hsl(var(--destructive) / 0.2)"
+                          fill="hsl(var(--destructive) / 0.3)"
                           name="Dyslexia Risk %"
                         />
                       </AreaChart>
@@ -488,12 +463,14 @@ export default function StudentProfilePage() {
       <Footer />
 
       {/* Email Dialog */}
-      <EmailReportDialog
-        open={emailDialogOpen}
-        onOpenChange={setEmailDialogOpen}
-        studentName={getFullName(student)}
-        assessmentId={selectedAssessmentId || undefined}
-      />
+      {selectedAssessmentId && (
+        <EmailReportDialog
+          open={emailDialogOpen}
+          onOpenChange={setEmailDialogOpen}
+          assessmentId={selectedAssessmentId}
+          studentName={student.name}
+        />
+      )}
     </div>
   );
 }

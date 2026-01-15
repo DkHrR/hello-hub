@@ -51,8 +51,8 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (profile) {
-      setFirstName(profile.first_name || profile.full_name?.split(' ')[0] || '');
-      setLastName(profile.last_name || profile.full_name?.split(' ').slice(1).join(' ') || '');
+      setFirstName(profile.first_name || profile.display_name?.split(' ')[0] || '');
+      setLastName(profile.last_name || profile.display_name?.split(' ').slice(1).join(' ') || '');
       setOrganization(profile.organization || '');
     }
   }, [profile]);
@@ -111,7 +111,7 @@ export default function ProfilePage() {
       
       // Send password change notification email via SMTP
       if (user?.email) {
-        const userName = profile?.first_name || profile?.full_name || user.email.split('@')[0];
+        const userName = profile?.first_name || profile?.display_name || user.email.split('@')[0];
         await sendEmail({
           to: user.email,
           type: 'password_change',

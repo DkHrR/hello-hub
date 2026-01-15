@@ -1,15 +1,22 @@
 /**
  * Parent Access Hook
- * Manages parent portal access via parent_access_tokens table
+ * Manages parent portal access via parent_student_links table
  */
 
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
-import type { Tables } from '@/integrations/supabase/types';
 
-type ParentAccessToken = Tables<'parent_access_tokens'>;
+interface ParentStudentLink {
+  id: string;
+  student_id: string;
+  parent_id: string | null;
+  access_code: string;
+  linked_by: string;
+  linked_at: string;
+  expires_at: string;
+}
 
 interface CreateLinkParams {
   studentId: string;
@@ -18,7 +25,7 @@ interface CreateLinkParams {
 
 export function useParentAccess() {
   const { toast } = useToast();
-  const [links, setLinks] = useState<ParentAccessToken[]>([]);
+  const [links, setLinks] = useState<ParentStudentLink[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +41,7 @@ export function useParentAccess() {
   const createLink = useCallback(async ({
     studentId,
     expiresInDays = 7,
-  }: CreateLinkParams): Promise<ParentAccessToken | null> => {
+  }: CreateLinkParams): Promise<ParentStudentLink | null> => {
     setIsLoading(true);
     setError(null);
 
@@ -47,11 +54,11 @@ export function useParentAccess() {
       expiresAt.setDate(expiresAt.getDate() + expiresInDays);
 
       const { data, error: insertError } = await supabase
-        .from('parent_access_tokens')
+        .from('parent_student_links')
         .insert({
           student_id: studentId,
           access_code: accessCode,
-          created_by: user.id,
+          linked_by: user.id,
           expires_at: expiresAt.toISOString(),
         })
         .select()
@@ -64,7 +71,7 @@ export function useParentAccess() {
         description: `Share this code with parents: ${accessCode}`,
       });
 
-      return data;
+      return data as ParentStudentLink;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create access code';
       setError(message);
@@ -83,13 +90,13 @@ export function useParentAccess() {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('parent_access_tokens')
+        .from('parent_student_links')
         .select('*')
         .eq('student_id', studentId)
-        .order('created_at', { ascending: false });
+        .order('linked_at', { ascending: false });
 
       if (error) throw error;
-      setLinks(data || []);
+      setLinks((data || []) as ParentStudentLink[]);
     } catch (err) {
       logger.error('Error fetching links', err);
       setLinks([]);

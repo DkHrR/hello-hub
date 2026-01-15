@@ -97,58 +97,38 @@ export function useOfflineSync() {
     if (!user) return false;
 
     try {
-      // First create an assessment
-      const { data: assessment, error: assessmentError } = await supabase
-        .from('assessments')
-        .insert({
-          assessor_id: user.id,
-          user_id: result.studentId ? null : user.id,
-          student_id: result.studentId || null,
-          assessment_type: 'comprehensive',
-          status: 'completed',
-          started_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (assessmentError) throw assessmentError;
-
       // Calculate risk score
       const riskScore = result.results?.dyslexiaProbabilityIndex || 
                         (result.results?.overallRiskLevel === 'high' ? 0.8 : 
                          result.results?.overallRiskLevel === 'moderate' ? 0.5 : 0.2);
 
-      // Then create the assessment result
+      // Determine risk level
+      const riskLevel = riskScore >= 0.6 ? 'high' : riskScore >= 0.3 ? 'moderate' : 'low';
+
+      // Insert into diagnostic_results table
       const { error: resultError } = await supabase
-        .from('assessment_results')
+        .from('diagnostic_results')
         .insert({
-          assessment_id: assessment.id,
-          overall_risk_score: riskScore,
-          reading_fluency_score: (result.results?.readingFluency || 0) / 100,
-          attention_score: result.results?.attentionScore || 0,
-          raw_data: {
-            results: result.results,
-            eyeTracking: result.eyeTrackingData,
-            syncedAt: new Date().toISOString(),
-          },
+          clinician_id: user.id,
+          user_id: result.studentId ? null : user.id,
+          student_id: result.studentId || null,
+          session_id: result.assessmentId,
+          dyslexia_probability_index: riskScore,
+          overall_risk_level: riskLevel,
+          // Eye tracking metrics from offline data
+          eye_total_fixations: result.eyeTrackingData?.fixations?.length || 0,
+          eye_avg_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
+          eye_regression_count: result.eyeTrackingData?.regressionCount || 0,
+          eye_chaos_index: result.eyeTrackingData?.chaosIndex || 0,
+          // Voice metrics
+          voice_words_per_minute: result.eyeTrackingData?.readingSpeedWpm || 0,
+          voice_fluency_score: (result.results?.readingFluency || 0),
+          // Store raw data
+          fixation_data: result.eyeTrackingData?.fixations || [],
+          saccade_data: result.eyeTrackingData?.saccades || [],
         });
 
       if (resultError) throw resultError;
-
-      // Store eye tracking data if available
-      if (result.eyeTrackingData) {
-        await supabase
-          .from('eye_tracking_data')
-          .insert({
-            assessment_id: assessment.id,
-            reading_speed_wpm: result.eyeTrackingData?.readingSpeedWpm || 0,
-            regression_count: result.eyeTrackingData?.regressionCount || 0,
-            average_fixation_duration: result.eyeTrackingData?.avgFixationDuration || 0,
-            fixation_points: result.eyeTrackingData?.fixations || [],
-            saccade_patterns: result.eyeTrackingData?.saccades || [],
-          });
-      }
 
       return true;
     } catch (error) {

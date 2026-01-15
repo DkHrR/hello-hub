@@ -110,7 +110,7 @@ export default function AuthPage() {
         setPendingUser({
           id: user.id,
           email: user.email || '',
-          name: profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || ''
+          name: profile?.display_name || profile?.first_name || user.user_metadata?.full_name || user.user_metadata?.name || ''
         });
         setShowRoleSelection(true);
       }
@@ -124,7 +124,7 @@ export default function AuthPage() {
       
       if (isEmailConfirmed && user.email) {
         welcomeEmailSentRef.current = true;
-        const userName = profile?.full_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0];
+        const userName = profile?.display_name || profile?.first_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0];
         sendWelcomeEmail(user.email, userName).catch((err) => {
           logger.error('Failed to send welcome email', err);
         });
