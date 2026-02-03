@@ -15,6 +15,7 @@ import { useUserRole, UI_ROLE_TO_DB_ROLE, type AppRole } from '@/hooks/useUserRo
 import { logger } from '@/lib/logger';
 import { useEmailService } from '@/hooks/useEmailService';
 import { useSmtpVerification } from '@/hooks/useSmtpVerification';
+import { supabase } from '@/integrations/supabase/client';
 
 // Resend confirmation email button component using SMTP
 function ResendConfirmationButton({ email, userName }: { email: string; userName?: string }) {
@@ -87,14 +88,33 @@ export default function AuthPage() {
       verificationCheckedRef.current = true;
       
       // Verify the token via SMTP service
-      verifyToken(verifyTokenParam, emailParam).then((success) => {
+      verifyToken(verifyTokenParam, emailParam).then(async (success) => {
         // Clear URL params after verification attempt
         searchParams.delete('verify');
         searchParams.delete('email');
         setSearchParams(searchParams, { replace: true });
         
         if (success) {
-          toast.success('Email verified! You can now sign in.');
+          toast.success('Email verified! Setting up your account...');
+          
+          // Refresh the session to pick up the email_confirmed_at change
+          // This will trigger the useEffect that checks for user/role
+          const { data: { session }, error } = await supabase.auth.refreshSession();
+          
+          if (session?.user) {
+            // User session refreshed - the other useEffect will handle role check/redirect
+            // Set pending user for role selection
+            setPendingUser({
+              id: session.user.id,
+              email: session.user.email || emailParam,
+              name: session.user.user_metadata?.display_name || session.user.user_metadata?.full_name || emailParam.split('@')[0]
+            });
+            setShowRoleSelection(true);
+            setShowEmailConfirmation(false);
+          } else {
+            // Session refresh failed, user needs to sign in
+            toast.info('Please sign in to continue.');
+          }
         }
       });
     }
