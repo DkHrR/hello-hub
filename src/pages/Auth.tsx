@@ -129,21 +129,8 @@ export default function AuthPage() {
     }
   }, [user, loading, isRoleLoading, hasAnyRole, profile, navigate]);
 
-  // Separate effect for welcome email to avoid infinite loop
-  useEffect(() => {
-    if (user && !loading && !welcomeEmailSentRef.current) {
-      const isEmailConfirmed = user.email_confirmed_at || user.app_metadata?.provider === 'google';
-      
-      if (isEmailConfirmed && user.email) {
-        welcomeEmailSentRef.current = true;
-        const userName = profile?.display_name || profile?.first_name || user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0];
-        sendWelcomeEmail(user.email, userName).catch((err) => {
-          logger.error('Failed to send welcome email', err);
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, user?.email_confirmed_at, loading]);
+  // Send welcome email only after role is selected (not on email confirmation)
+  // This is now handled in handleRoleSelect after successful role assignment
 
   const validateEmail = (value: string) => {
     try {
@@ -187,6 +174,14 @@ export default function AuthPage() {
     try {
       // Use the secure RPC function to set role server-side
       await setRole(dbRole);
+      
+      // Send welcome email AFTER role selection is complete
+      if (pendingUser.email) {
+        sendWelcomeEmail(pendingUser.email, pendingUser.name || pendingUser.email.split('@')[0]).catch((err) => {
+          logger.error('Failed to send welcome email', err);
+        });
+      }
+      
       toast.success(`Welcome! You're registered as ${roleDisplayMap[role]}`);
       navigate('/dashboard');
     } catch (error) {
@@ -226,9 +221,21 @@ export default function AuthPage() {
     
     if (error) {
       setIsSubmitting(false);
-      // Use generic error message to prevent account enumeration
       logger.error('Sign up failed', error);
-      toast.error('Unable to create account. Please try again or use a different email.');
+      
+      // Show specific error messages for common issues
+      if (error.message?.includes('weak_password') || (error as any).code === 'weak_password') {
+        const reasons = (error as any).reasons || [];
+        if (reasons.includes('pwned')) {
+          toast.error('This password was found in a data breach. Please choose a different password.');
+        } else {
+          toast.error('Password is too weak. Please use a stronger password with more complexity.');
+        }
+      } else if (error.message?.includes('already registered') || error.message?.includes('already exists')) {
+        toast.error('An account with this email already exists. Please sign in instead.');
+      } else {
+        toast.error('Unable to create account. Please try again or use a different email.');
+      }
     } else {
       // Send verification email via SMTP
       await sendVerificationEmail(email, fullName);

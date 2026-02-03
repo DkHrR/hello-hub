@@ -23,5 +23,15 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
+  // Check if email is verified for email/password users
+  // OAuth users (Google) are auto-verified, so we check the provider
+  const isOAuthUser = user.app_metadata?.provider === 'google';
+  const isEmailVerified = user.email_confirmed_at !== null && user.email_confirmed_at !== undefined;
+  
+  if (!isOAuthUser && !isEmailVerified) {
+    // Email not verified, redirect back to auth page
+    return <Navigate to="/auth" state={{ from: location, unverified: true }} replace />;
+  }
+
   return <>{children}</>;
 }
