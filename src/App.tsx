@@ -18,6 +18,7 @@ import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
 import Install from "./pages/Install";
+import DatasetUpload from "./pages/DatasetUpload";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -60,6 +61,11 @@ const App = () => (
                 <Route path="/student/:studentId" element={
                   <ProtectedRoute>
                     <StudentProfile />
+                  </ProtectedRoute>
+                } />
+                <Route path="/dataset-upload" element={
+                  <ProtectedRoute>
+                    <DatasetUpload />
                   </ProtectedRoute>
                 } />
                 <Route path="/profile" element={
