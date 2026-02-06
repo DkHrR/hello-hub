@@ -59,6 +59,60 @@ export type Database = {
         }
         Relationships: []
       }
+      chunked_uploads: {
+        Row: {
+          bucket_name: string
+          chunk_size: number
+          chunks_uploaded: number
+          completed_at: string | null
+          created_at: string
+          file_name: string
+          id: string
+          metadata: Json | null
+          mime_type: string | null
+          original_size: number
+          status: string
+          storage_prefix: string
+          total_chunks: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bucket_name?: string
+          chunk_size?: number
+          chunks_uploaded?: number
+          completed_at?: string | null
+          created_at?: string
+          file_name: string
+          id?: string
+          metadata?: Json | null
+          mime_type?: string | null
+          original_size: number
+          status?: string
+          storage_prefix: string
+          total_chunks: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bucket_name?: string
+          chunk_size?: number
+          chunks_uploaded?: number
+          completed_at?: string | null
+          created_at?: string
+          file_name?: string
+          id?: string
+          metadata?: Json | null
+          mime_type?: string | null
+          original_size?: number
+          status?: string
+          storage_prefix?: string
+          total_chunks?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       diagnostic_results: {
         Row: {
           adhd_probability_index: number | null
@@ -467,6 +521,44 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      upload_chunks: {
+        Row: {
+          checksum: string | null
+          chunk_index: number
+          id: string
+          size: number
+          storage_path: string
+          upload_id: string
+          uploaded_at: string
+        }
+        Insert: {
+          checksum?: string | null
+          chunk_index: number
+          id?: string
+          size: number
+          storage_path: string
+          upload_id: string
+          uploaded_at?: string
+        }
+        Update: {
+          checksum?: string | null
+          chunk_index?: number
+          id?: string
+          size?: number
+          storage_path?: string
+          upload_id?: string
+          uploaded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "upload_chunks_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "chunked_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
