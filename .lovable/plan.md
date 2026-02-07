@@ -1,128 +1,145 @@
 
-# Plan: Fix Email Verification Flow and Authentication Issues
+# Plan: Dataset-Driven Diagnostic Engine
 
-## Issues Identified
+## Overview
+Transform the current hardcoded diagnostic system into a data-driven one. The uploaded ETDD-70 dataset (35 dyslexic + 35 non-dyslexic students) will be processed, stored as structured reference profiles, and used to calibrate the diagnostic thresholds and scoring -- making dyslexia detection more accurate. The architecture will also support future ADHD and dysgraphia datasets.
 
-Based on my investigation, I've identified the following problems:
+## Current State
+- Diagnostic thresholds (fixation duration, regression rate, chaos index, etc.) are **hardcoded** in `etdd70Engine.ts` and `useDyslexiaClassifier.ts`
+- The chunked upload system stores raw files but does **nothing** with them after upload
+- No mechanism exists to extract features from dataset files and use them as reference data
 
-### Issue 1: Signup Error Despite Correct Information
-**Root Cause:** The console logs reveal the actual error is `AuthWeakPasswordError` with reason `"pwned"` - meaning the password was found in a data breach database. The UI shows a generic "Unable to create account" message instead of the specific password issue.
+## What We Will Build
 
-**Fix:** Show the specific weak password error message to users so they know to choose a different password.
+### 1. Dataset Reference Profiles Table
+A new database table `dataset_reference_profiles` to store processed feature data extracted from the uploaded dataset files.
 
----
+| Column | Type | Purpose |
+|--------|------|---------|
+| id | uuid | Primary key |
+| dataset_type | text | 'dyslexia', 'adhd', 'dysgraphia' |
+| subject_label | text | e.g., 'D01', 'N15' (dyslexic/non-dyslexic ID) |
+| is_positive | boolean | true = has condition, false = control |
+| features | jsonb | Extracted metrics (fixation durations, regression rates, chaos index, etc.) |
+| source_upload_id | uuid | Links back to chunked_uploads |
+| uploaded_by | uuid | Clinician who uploaded |
+| created_at | timestamptz | Auto timestamp |
 
-### Issue 2: SMTP Service is Gmail, Not Resend
-**Status:** Already correctly using Gmail SMTP via `denomailer` library. Both `send-email` and `verify-email` edge functions use Gmail SMTP (smtp.gmail.com:465). No changes needed here.
+RLS: Users can read all profiles (reference data is shared), but only insert/update/delete their own.
 
----
+### 2. Computed Thresholds Table
+A `dataset_computed_thresholds` table to cache the statistically computed thresholds from reference profiles.
 
-### Issue 3: Users Not Getting Confirmation Email with Link
-**Root Cause:** The `verify-email` edge function exists and has the correct email template with a clickable link, BUT:
-1. No logs appear for the edge function, suggesting it may not be getting called
-2. The function requires the user to exist in Supabase Auth before it can send an email, but with `auto_confirm_email: true`, users might be created without needing verification
+| Column | Type | Purpose |
+|--------|------|---------|
+| id | uuid | Primary key |
+| dataset_type | text | 'dyslexia', 'adhd', 'dysgraphia' |
+| metric_name | text | e.g., 'fixation_duration_avg', 'regression_rate' |
+| positive_mean | numeric | Mean for positive (diagnosed) group |
+| positive_std | numeric | Std deviation for positive group |
+| negative_mean | numeric | Mean for control group |
+| negative_std | numeric | Std deviation for control group |
+| optimal_threshold | numeric | Computed optimal cutoff |
+| weight | numeric | Computed feature importance |
+| sample_size_positive | integer | Number of positive samples |
+| sample_size_negative | integer | Number of negative samples |
+| computed_at | timestamptz | When thresholds were last calculated |
 
-**Problem:** Supabase is configured with `auto_confirm_email: true`, which means:
-- Supabase automatically confirms the email address
-- The user's `email_confirmed_at` is set immediately
-- Our custom SMTP verification flow is bypassed
+RLS: Readable by all authenticated users. Only service role can write (via edge function).
 
----
+### 3. Dataset Processing Edge Function (`process-dataset`)
+A new edge function that:
+1. Takes an upload ID and dataset type as input
+2. Reads the uploaded files from storage (via the chunked upload system)
+3. Parses the dataset files (CSV/JSON with handwriting feature data)
+4. Extracts features per subject (fixation metrics, regression rates, handwriting scores)
+5. Stores each subject's features as a row in `dataset_reference_profiles`
+6. Recomputes statistical thresholds using positive vs. negative group comparison
+7. Updates `dataset_computed_thresholds` with new optimal thresholds and weights
 
-### Issue 4: Welcome Email Sent Instead of Confirmation Email
-**Root Cause:** In `Auth.tsx` lines 133-146, a welcome email is sent when `isEmailConfirmed` is true. Since `auto_confirm_email: true` is enabled, the email is immediately confirmed upon signup, triggering the welcome email logic instead of the confirmation flow.
+### 4. Enhanced DatasetUploader UI
+Update the upload page to:
+- Let users specify the **dataset type** (Dyslexia / ADHD / Dysgraphia) before upload
+- Add a **"Process Dataset"** button that appears after upload completes
+- Show processing status and results (number of profiles extracted, thresholds computed)
+- Display a summary of computed thresholds vs. current hardcoded values
 
----
+### 5. Data-Driven Diagnostic Engine
+Modify the diagnostic engine to:
+- On initialization, fetch computed thresholds from `dataset_computed_thresholds`
+- If dataset-derived thresholds exist, use them instead of hardcoded defaults
+- Fall back to hardcoded thresholds if no dataset has been processed yet
+- Use a **nearest-neighbor comparison** against reference profiles for a secondary confidence score
 
-### Issue 5: Back Button Allows Dashboard Access Without Email Verification
-**Root Cause:** The `ProtectedRoute` component only checks if `user` exists, not if the email is verified. When a user clicks "Back to Sign In" on the email confirmation screen, they can navigate to protected routes because they have a valid session.
+## Architecture Flow
 
----
+```text
+Upload Dataset Files
+       |
+       v
+Chunked Upload (existing) --> Storage bucket
+       |
+       v
+"Process Dataset" button click
+       |
+       v
+process-dataset Edge Function
+  |-- Reads files from storage
+  |-- Parses CSV/JSON features per subject
+  |-- Stores in dataset_reference_profiles
+  |-- Computes group statistics (positive vs negative)
+  |-- Stores in dataset_computed_thresholds
+       |
+       v
+Diagnostic Engine (enhanced)
+  |-- Fetches computed thresholds on load
+  |-- Uses data-driven thresholds for scoring
+  |-- Compares new assessments against reference profiles
+  |-- Produces more accurate probability indices
+```
 
-## Solution Plan
+## Files to Create
 
-### Step 1: Disable Auto-Confirm Email
-Configure Supabase auth to disable auto email confirmation:
-- Set `auto_confirm_email: false`
-- This ensures users must verify their email before being fully authenticated
-
-### Step 2: Improve Error Messages for Password Validation
-Update `Auth.tsx` to show specific password errors:
-- Check for `AuthWeakPasswordError` code
-- Display "Password is too common or found in a breach. Please choose a stronger password"
-- This helps users understand why signup is failing
-
-### Step 3: Fix ProtectedRoute to Require Email Verification
-Update `ProtectedRoute` to check `email_confirmed_at`:
-- If user exists but email is not confirmed, redirect to `/auth` 
-- This prevents the back-button bypass vulnerability
-
-### Step 4: Fix the Email Flow Logic
-Update `Auth.tsx` to properly sequence emails:
-1. On signup: Send CONFIRMATION email via `verify-email` function
-2. After email verified + role selected: Send WELCOME email
-3. Remove the automatic welcome email on `email_confirmed_at` change
-
-### Step 5: Handle the Verification Link URL Construction
-Ensure the verification URL is correctly constructed:
-- Use the project's actual URL, not just `origin`
-- Include proper encoding for email parameter
-
----
+| File | Purpose |
+|------|---------|
+| `supabase/functions/process-dataset/index.ts` | Edge function to parse dataset and compute thresholds |
+| `src/hooks/useDatasetThresholds.ts` | Hook to fetch and manage dataset-derived thresholds |
+| Migration SQL | Create `dataset_reference_profiles` and `dataset_computed_thresholds` tables |
 
 ## Files to Modify
 
-| File | Changes |
+| File | Change |
 |------|---------|
-| `src/pages/Auth.tsx` | Fix error message handling for weak passwords, fix welcome/confirmation email logic sequence |
-| `src/components/auth/ProtectedRoute.tsx` | Add email verification check to prevent back-button bypass |
-| `supabase/functions/verify-email/index.ts` | Verify URL construction is correct, add more detailed logging |
-| Configure Auth | Disable `auto_confirm_email` |
-
----
+| `src/components/dataset/DatasetUploader.tsx` | Add dataset type selector, process button, and results display |
+| `src/pages/DatasetUpload.tsx` | Minor layout updates to accommodate new features |
+| `src/lib/etdd70Engine.ts` | Accept dynamic thresholds from database instead of only hardcoded values |
+| `src/hooks/useDiagnosticEngine.ts` | Integrate dataset thresholds into probability calculations |
+| `src/hooks/useDyslexiaClassifier.ts` | Use data-driven weights when available |
+| `supabase/config.toml` | Register the new `process-dataset` edge function |
 
 ## Technical Details
 
-### ProtectedRoute Enhancement
-```text
-1. Check if user.email_confirmed_at exists
-2. If not confirmed AND provider is email (not OAuth):
-   - Redirect to /auth with state indicating unverified email
-3. Let verified users and OAuth users through
-```
+### Dataset File Format Support
+The processing function will support:
+- **CSV files**: Columns for subject ID, label (dyslexic/control), and metric values
+- **JSON files**: Array of objects with subject data
+- Standard column names: `subject_id`, `label`, `fixation_duration_avg`, `regression_rate`, `saccade_amplitude`, `chaos_index`, `reading_speed_wpm`, etc.
 
-### Auth.tsx Email Flow
-```text
-Signup Flow:
-1. User fills form -> signUp() called
-2. If success -> sendVerificationEmail() via SMTP
-3. Show "Check Your Email" screen
-4. Disable navigation until verified
+### Threshold Computation Algorithm
+For each metric:
+1. Separate data into positive (diagnosed) and negative (control) groups
+2. Calculate mean and standard deviation for each group
+3. Compute optimal threshold using the midpoint between group means, weighted by standard deviations
+4. Calculate feature importance (weight) based on effect size (Cohen's d)
+5. Store results for use by the diagnostic engine
 
-Post-Verification:
-1. User clicks link -> verifyToken() called
-2. If success -> show role selection
-3. After role selection -> sendWelcomeEmail()
-4. Navigate to dashboard
-```
+### Fallback Strategy
+- If no dataset has been processed, the system continues using hardcoded ETDD-70 thresholds (current behavior)
+- Partial datasets work too: if only dyslexia data exists, only dyslexia thresholds are data-driven; ADHD/dysgraphia remain hardcoded
+- A visual indicator in the dashboard shows whether thresholds are "data-driven" or "default"
 
-### Password Error Handling
-```text
-if (error.code === 'weak_password') {
-  if (error.reasons?.includes('pwned')) {
-    toast.error('This password was found in a data breach. Please choose a different one.');
-  } else {
-    toast.error('Password is too weak. Please choose a stronger password.');
-  }
-}
-```
-
----
-
-## Expected Outcome After Fix
-
-1. Users see specific error messages when passwords are weak/breached
-2. Gmail SMTP sends verification emails with clickable links
-3. Users cannot access protected routes until email is verified
-4. Confirmation email is sent on signup, welcome email after verification + role selection
-5. Back button cannot bypass email verification requirement
+### Future ADHD and Dysgraphia Support
+The architecture is generic by design:
+- `dataset_type` field supports 'dyslexia', 'adhd', 'dysgraphia'
+- Each dataset type has its own set of relevant metrics and thresholds
+- The processing function handles all three types with appropriate feature extraction
