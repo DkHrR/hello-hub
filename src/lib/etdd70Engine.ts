@@ -38,28 +38,15 @@ export interface ETDD70Score {
   clinicalNotes: string[];
 }
 
-// ETDD70 Universal Dataset Thresholds
-const ETDD70_THRESHOLDS = {
-  // Fixation duration threshold (ms) - clinical standard is 330ms for dyslexia indicators
+// Default ETDD70 Universal Dataset Thresholds (hardcoded fallbacks)
+const DEFAULT_ETDD70_THRESHOLDS = {
   FIXATION_DURATION_THRESHOLD: 330,
-  
-  // Prolonged fixation threshold (ms)
   PROLONGED_FIXATION_THRESHOLD: 400,
-  
-  // Regression rate threshold (%) - dyslexic readers show >20% regressions
   REGRESSION_RATE_THRESHOLD: 20,
-  
-  // Reading speed threshold (words per minute) for age-adjusted scoring
   READING_SPEED_LOW: 80,
   READING_SPEED_VERY_LOW: 50,
-  
-  // Chaos Index threshold - measure of gaze path irregularity
   CHAOS_INDEX_THRESHOLD: 0.35,
-  
-  // Fixation Intersection Coefficient - overlap measure
   FIC_THRESHOLD: 0.6,
-  
-  // Weight factors for probability calculation
   WEIGHTS: {
     fixationDuration: 0.25,
     regressionRate: 0.25,
@@ -68,6 +55,43 @@ const ETDD70_THRESHOLDS = {
     ficScore: 0.15
   }
 };
+
+// Dynamic thresholds that can be overridden by dataset-derived values
+export interface DynamicThresholds {
+  fixation_duration_avg?: number;
+  regression_rate?: number;
+  chaos_index?: number;
+  fic_score?: number;
+  reading_speed_wpm?: number;
+  prolonged_fixation_rate?: number;
+  weights?: {
+    fixationDuration?: number;
+    regressionRate?: number;
+    prolongedFixations?: number;
+    chaosIndex?: number;
+    ficScore?: number;
+  };
+}
+
+// Merge dynamic thresholds with defaults
+function getThresholds(dynamic?: DynamicThresholds) {
+  return {
+    FIXATION_DURATION_THRESHOLD: dynamic?.fixation_duration_avg ?? DEFAULT_ETDD70_THRESHOLDS.FIXATION_DURATION_THRESHOLD,
+    PROLONGED_FIXATION_THRESHOLD: DEFAULT_ETDD70_THRESHOLDS.PROLONGED_FIXATION_THRESHOLD,
+    REGRESSION_RATE_THRESHOLD: dynamic?.regression_rate ?? DEFAULT_ETDD70_THRESHOLDS.REGRESSION_RATE_THRESHOLD,
+    READING_SPEED_LOW: dynamic?.reading_speed_wpm ?? DEFAULT_ETDD70_THRESHOLDS.READING_SPEED_LOW,
+    READING_SPEED_VERY_LOW: DEFAULT_ETDD70_THRESHOLDS.READING_SPEED_VERY_LOW,
+    CHAOS_INDEX_THRESHOLD: dynamic?.chaos_index ?? DEFAULT_ETDD70_THRESHOLDS.CHAOS_INDEX_THRESHOLD,
+    FIC_THRESHOLD: dynamic?.fic_score ?? DEFAULT_ETDD70_THRESHOLDS.FIC_THRESHOLD,
+    WEIGHTS: {
+      fixationDuration: dynamic?.weights?.fixationDuration ?? DEFAULT_ETDD70_THRESHOLDS.WEIGHTS.fixationDuration,
+      regressionRate: dynamic?.weights?.regressionRate ?? DEFAULT_ETDD70_THRESHOLDS.WEIGHTS.regressionRate,
+      prolongedFixations: dynamic?.weights?.prolongedFixations ?? DEFAULT_ETDD70_THRESHOLDS.WEIGHTS.prolongedFixations,
+      chaosIndex: dynamic?.weights?.chaosIndex ?? DEFAULT_ETDD70_THRESHOLDS.WEIGHTS.chaosIndex,
+      ficScore: dynamic?.weights?.ficScore ?? DEFAULT_ETDD70_THRESHOLDS.WEIGHTS.ficScore,
+    }
+  };
+}
 
 /**
  * Calculate the Chaos Index from fixation data
@@ -130,8 +154,9 @@ function countRegressions(saccades: EyeTrackingMetrics['saccades']): number {
  * Main ETDD70 scoring function
  * Calculates dyslexia probability based on eye-tracking metrics
  */
-export function calculateETDD70Score(metrics: EyeTrackingMetrics): ETDD70Score {
+export function calculateETDD70Score(metrics: EyeTrackingMetrics, dynamicThresholds?: DynamicThresholds): ETDD70Score {
   const { fixations, saccades, totalReadingTime, textLength } = metrics;
+  const ETDD70_THRESHOLDS = getThresholds(dynamicThresholds);
   
   const clinicalNotes: string[] = [];
   

@@ -113,6 +113,92 @@ export type Database = {
         }
         Relationships: []
       }
+      dataset_computed_thresholds: {
+        Row: {
+          computed_at: string
+          dataset_type: string
+          id: string
+          metric_name: string
+          negative_mean: number
+          negative_std: number
+          optimal_threshold: number
+          positive_mean: number
+          positive_std: number
+          sample_size_negative: number
+          sample_size_positive: number
+          weight: number
+        }
+        Insert: {
+          computed_at?: string
+          dataset_type: string
+          id?: string
+          metric_name: string
+          negative_mean?: number
+          negative_std?: number
+          optimal_threshold?: number
+          positive_mean?: number
+          positive_std?: number
+          sample_size_negative?: number
+          sample_size_positive?: number
+          weight?: number
+        }
+        Update: {
+          computed_at?: string
+          dataset_type?: string
+          id?: string
+          metric_name?: string
+          negative_mean?: number
+          negative_std?: number
+          optimal_threshold?: number
+          positive_mean?: number
+          positive_std?: number
+          sample_size_negative?: number
+          sample_size_positive?: number
+          weight?: number
+        }
+        Relationships: []
+      }
+      dataset_reference_profiles: {
+        Row: {
+          created_at: string
+          dataset_type: string
+          features: Json
+          id: string
+          is_positive: boolean
+          source_upload_id: string | null
+          subject_label: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          dataset_type: string
+          features?: Json
+          id?: string
+          is_positive?: boolean
+          source_upload_id?: string | null
+          subject_label: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          dataset_type?: string
+          features?: Json
+          id?: string
+          is_positive?: boolean
+          source_upload_id?: string | null
+          subject_label?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dataset_reference_profiles_source_upload_id_fkey"
+            columns: ["source_upload_id"]
+            isOneToOne: false
+            referencedRelation: "chunked_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       diagnostic_results: {
         Row: {
           adhd_probability_index: number | null

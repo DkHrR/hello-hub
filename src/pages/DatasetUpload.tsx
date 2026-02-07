@@ -16,7 +16,7 @@ export default function DatasetUpload() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dataset Management</h1>
-            <p className="text-sm text-muted-foreground">Upload and manage ETDD-70 dataset files</p>
+            <p className="text-sm text-muted-foreground">Upload, process, and calibrate diagnostic thresholds from research datasets</p>
           </div>
         </div>
         <DatasetUploader />
