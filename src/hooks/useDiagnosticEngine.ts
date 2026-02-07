@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { useDatasetThresholds } from '@/hooks/useDatasetThresholds';
 import type { 
   EyeTrackingMetrics, 
   VoiceMetrics, 
@@ -74,6 +75,7 @@ const DEFAULT_WEIGHTS: DiagnosticWeights = {
 
 export function useDiagnosticEngine() {
   const { user } = useAuth();
+  const { getThreshold, getWeight, isDataDriven, isLoaded } = useDatasetThresholds();
 
   // Calculate Dyslexia Probability Index using weighted scoring
   const calculateDyslexiaIndex = useCallback((
@@ -83,10 +85,15 @@ export function useDiagnosticEngine() {
     weights: DiagnosticWeights = DEFAULT_WEIGHTS
   ): number => {
     // Eye tracking indicators (higher chaos/regressions = higher risk)
+    // Use data-driven thresholds when available for normalization
+    const chaosThreshold = getThreshold('dyslexia', 'chaos_index', 1);
+    const regressionNorm = getThreshold('dyslexia', 'regression_rate', 20);
+    const ficThreshold = getThreshold('dyslexia', 'fic_score', 1);
+
     const eyeScore = (
-      (eyeMetrics.chaosIndex * 0.3) +
-      (Math.min(eyeMetrics.regressionCount / 20, 1) * 0.25) +
-      (eyeMetrics.fixationIntersectionCoefficient * 0.25) +
+      (Math.min(eyeMetrics.chaosIndex / chaosThreshold, 1) * 0.3) +
+      (Math.min(eyeMetrics.regressionCount / regressionNorm, 1) * 0.25) +
+      (Math.min(eyeMetrics.fixationIntersectionCoefficient / ficThreshold, 1) * 0.25) +
       (Math.min(eyeMetrics.prolongedFixations / 10, 1) * 0.2)
     );
 
@@ -107,15 +114,23 @@ export function useDiagnosticEngine() {
       ((1 - handwritingMetrics.lineAdherence) * 0.15)
     );
 
+    // Use data-driven weights if available
+    const dynamicWeights: DiagnosticWeights = isDataDriven.dyslexia ? {
+      eyeTracking: getWeight('dyslexia', 'fixation_duration_avg', weights.eyeTracking),
+      voice: weights.voice,
+      handwriting: weights.handwriting,
+      cognitiveLoad: weights.cognitiveLoad,
+    } : weights;
+
     // Weighted combination
     const totalScore = (
-      (eyeScore * weights.eyeTracking) +
-      (voiceScore * weights.voice) +
-      (handwritingScore * weights.handwriting)
-    ) / (weights.eyeTracking + weights.voice + weights.handwriting);
+      (eyeScore * dynamicWeights.eyeTracking) +
+      (voiceScore * dynamicWeights.voice) +
+      (handwritingScore * dynamicWeights.handwriting)
+    ) / (dynamicWeights.eyeTracking + dynamicWeights.voice + dynamicWeights.handwriting);
 
     return Math.min(1, Math.max(0, totalScore));
-  }, []);
+  }, [getThreshold, getWeight, isDataDriven]);
 
   // Calculate ADHD Probability Index
   const calculateADHDIndex = useCallback((
@@ -309,5 +324,7 @@ export function useDiagnosticEngine() {
     createDiagnosticResult,
     saveDiagnosticResult,
     generateRecommendations,
+    isDataDriven,
+    isThresholdsLoaded: isLoaded,
   };
 }

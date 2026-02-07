@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Upload, FileUp, CheckCircle2, XCircle, Pause, Clock, HardDrive, Zap } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Upload, FileUp, CheckCircle2, XCircle, Pause, Clock, HardDrive, Zap, Brain, FlaskConical, Loader2 } from 'lucide-react';
 import { useChunkedUpload, UploadProgress } from '@/hooks/useChunkedUpload';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 function formatBytes(bytes: number): string {
@@ -23,6 +25,8 @@ function formatTime(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
+type DatasetType = 'dyslexia' | 'adhd' | 'dysgraphia';
+
 interface PreviousUpload {
   id: string;
   file_name: string;
@@ -34,15 +38,36 @@ interface PreviousUpload {
   completed_at: string | null;
 }
 
+interface ProcessingResult {
+  success: boolean;
+  profilesInserted: number;
+  thresholdsComputed: number;
+  positiveCount: number;
+  negativeCount: number;
+  metrics: string[];
+  thresholdsSummary: Array<{
+    metric: string;
+    optimalThreshold: string;
+    weight: string;
+    positiveMean: string;
+    negativeMean: string;
+  }>;
+}
+
 export function DatasetUploader() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previousUploads, setPreviousUploads] = useState<PreviousUpload[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [datasetType, setDatasetType] = useState<DatasetType>('dyslexia');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
+  const [lastCompletedUploadId, setLastCompletedUploadId] = useState<string | null>(null);
 
   const { uploadFiles, uploads, isUploading, getUploadsList } = useChunkedUpload({
-    chunkSize: 5 * 1024 * 1024, // 5MB chunks
+    chunkSize: 5 * 1024 * 1024,
     onComplete: (uploadId, fileName) => {
       console.log(`Upload complete: ${uploadId} - ${fileName}`);
+      setLastCompletedUploadId(uploadId);
       loadHistory();
     },
     onError: (error, fileName) => {
@@ -78,8 +103,38 @@ export function DatasetUploader() {
       return;
     }
     
-    await uploadFiles(selectedFiles, { dataset: 'etdd70' });
+    setProcessingResult(null);
+    await uploadFiles(selectedFiles, { dataset: 'etdd70', datasetType });
     setSelectedFiles([]);
+  };
+
+  const handleProcessDataset = async (uploadId?: string) => {
+    setIsProcessing(true);
+    setProcessingResult(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('process-dataset', {
+        body: {
+          uploadId: uploadId || lastCompletedUploadId,
+          datasetType,
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      setProcessingResult(data);
+      toast.success(`Processed ${data.profilesInserted} profiles, computed ${data.thresholdsComputed} thresholds`);
+    } catch (err) {
+      console.error('Processing error:', err);
+      toast.error('Failed to process dataset. Check console for details.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const removeFile = (index: number) => {
@@ -91,19 +146,51 @@ export function DatasetUploader() {
 
   return (
     <div className="space-y-6">
+      {/* Dataset Type Selector */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5 text-primary" />
+            Dataset Configuration
+          </CardTitle>
+          <CardDescription>
+            Select the type of dataset you're uploading. This determines how features are extracted and thresholds computed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-foreground">Dataset Type</label>
+            <Select value={datasetType} onValueChange={(v) => setDatasetType(v as DatasetType)}>
+              <SelectTrigger className="w-full max-w-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dyslexia">🧠 Dyslexia (ETDD-70)</SelectItem>
+                <SelectItem value="adhd">⚡ ADHD</SelectItem>
+                <SelectItem value="dysgraphia">✍️ Dysgraphia</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {datasetType === 'dyslexia' && 'Eye-tracking metrics: fixation duration, regression rate, chaos index, saccade amplitude, reading speed'}
+              {datasetType === 'adhd' && 'Attention metrics: chaos index, attention lapses, saccade variability, off-task glances'}
+              {datasetType === 'dysgraphia' && 'Handwriting metrics: letter reversals, crowding, graphic inconsistency, line adherence'}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Upload Area */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5 text-primary" />
-            ETDD-70 Dataset Upload
+            Dataset Upload
           </CardTitle>
           <CardDescription>
-            Upload large dataset files using chunked upload (5MB chunks). Files larger than 50MB are automatically split and reassembled.
+            Upload CSV or JSON files with subject data (columns: subject_id, label, and metric values). Files are chunked into 5MB pieces for reliable upload.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Dropzone */}
           <div
             {...getRootProps()}
             className={`
@@ -122,12 +209,11 @@ export function DatasetUploader() {
             ) : (
               <div>
                 <p className="font-medium text-foreground">Drag & drop dataset files here</p>
-                <p className="text-sm text-muted-foreground mt-1">or click to browse • No file size limit</p>
+                <p className="text-sm text-muted-foreground mt-1">CSV or JSON • No file size limit</p>
               </div>
             )}
           </div>
 
-          {/* Selected Files */}
           {selectedFiles.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -189,6 +275,93 @@ export function DatasetUploader() {
         </Card>
       )}
 
+      {/* Process Dataset Button */}
+      {lastCompletedUploadId && !processingResult && (
+        <Card className="border-primary/50 bg-primary/5">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-3">
+              <FlaskConical className="h-8 w-8 mx-auto text-primary" />
+              <h3 className="font-semibold text-foreground">Dataset Ready for Processing</h3>
+              <p className="text-sm text-muted-foreground">
+                Your {datasetType} dataset has been uploaded. Click below to extract features, compute statistical thresholds, and calibrate the diagnostic engine.
+              </p>
+              <Button 
+                onClick={() => handleProcessDataset()} 
+                disabled={isProcessing}
+                size="lg"
+                className="gap-2"
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Processing Dataset...
+                  </>
+                ) : (
+                  <>
+                    <FlaskConical className="h-4 w-4" />
+                    Process Dataset
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Processing Results */}
+      {processingResult && (
+        <Card className="border-primary/30">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
+              Processing Results
+            </CardTitle>
+            <CardDescription>
+              Dataset processed successfully. Thresholds are now active in the diagnostic engine.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="text-center p-3 rounded-lg bg-muted/50">
+                <p className="text-2xl font-bold text-foreground">{processingResult.profilesInserted}</p>
+                <p className="text-xs text-muted-foreground">Profiles</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-muted/50">
+                <p className="text-2xl font-bold text-foreground">{processingResult.positiveCount}</p>
+                <p className="text-xs text-muted-foreground">Positive</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-muted/50">
+                <p className="text-2xl font-bold text-foreground">{processingResult.negativeCount}</p>
+                <p className="text-xs text-muted-foreground">Control</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-muted/50">
+                <p className="text-2xl font-bold text-foreground">{processingResult.thresholdsComputed}</p>
+                <p className="text-xs text-muted-foreground">Thresholds</p>
+              </div>
+            </div>
+
+            {processingResult.thresholdsSummary.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Computed Thresholds</h4>
+                <ScrollArea className="max-h-60">
+                  <div className="space-y-1.5">
+                    {processingResult.thresholdsSummary.map((t, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs py-2 px-3 rounded bg-muted/30">
+                        <span className="font-medium truncate flex-1">{t.metric.replace(/_/g, ' ')}</span>
+                        <div className="flex items-center gap-3 ml-2 text-muted-foreground">
+                          <span>Threshold: <strong className="text-foreground">{Number(t.optimalThreshold).toFixed(2)}</strong></span>
+                          <span>Weight: <strong className="text-foreground">{Number(t.weight).toFixed(2)}</strong></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Upload History */}
       <Card>
         <CardHeader>
@@ -214,7 +387,18 @@ export function DatasetUploader() {
                         {formatBytes(upload.original_size)} • {new Date(upload.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="ml-3">
+                    <div className="flex items-center gap-2 ml-3">
+                      {upload.status === 'complete' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7"
+                          onClick={() => handleProcessDataset(upload.id)}
+                          disabled={isProcessing}
+                        >
+                          {isProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Process'}
+                        </Button>
+                      )}
                       <StatusBadge status={upload.status} />
                     </div>
                   </div>
