@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, UserPlus, Users, Eye } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
+import { useUserRole } from '@/hooks/useUserRole';
 
 type Student = Tables<'students'>;
 
@@ -25,6 +26,7 @@ export default function Students() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { isIndividual, hasRole, isLoading: roleLoading } = useUserRole();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -188,6 +190,13 @@ export default function Students() {
       notes: student.notes || '',
     });
   };
+
+  // Redirect individual/parent users away from students page
+  useEffect(() => {
+    if (!roleLoading && (isIndividual || hasRole('parent'))) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isIndividual, hasRole, roleLoading, navigate]);
 
   if (!user) {
     return (

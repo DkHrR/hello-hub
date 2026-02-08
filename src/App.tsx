@@ -17,7 +17,6 @@ import StudentProfile from "./pages/StudentProfile";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
-import Install from "./pages/Install";
 import DatasetUpload from "./pages/DatasetUpload";
 import NotFound from "./pages/NotFound";
 
@@ -37,7 +36,6 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/install" element={<Install />} />
                 <Route path="/assessment" element={
                   <ProtectedRoute>
                     <Assessment />
