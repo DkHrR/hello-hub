@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { StudentProgressChart } from '@/components/dashboard/StudentProgressChart';
+// StudentProgressChart removed - this is a one-time assessment platform
 import { GazeHeatmapReport } from '@/components/dashboard/GazeHeatmapReport';
 import { AIInsightsPanel } from '@/components/reports/AIInsightsPanel';
 import { useAuth } from '@/contexts/AuthContext';
@@ -307,6 +307,95 @@ export default function DashboardPage() {
                 </motion.div>
               )}
 
+              {/* Latest Assessment Summary for individual users */}
+              {isIndividual && selfAssessments.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Latest Assessment Results</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {(() => {
+                        const latest = selfAssessments[0];
+                        const dyslexia = Math.round((Number(latest.dyslexia_probability_index) ?? 0) * 100);
+                        const adhd = Math.round((Number(latest.adhd_probability_index) ?? 0) * 100);
+                        const dysgraphia = Math.round((Number(latest.dysgraphia_probability_index) ?? 0) * 100);
+                        return (
+                          <div className="space-y-6">
+                            <div className="flex items-center gap-3 mb-4">
+                              {getRiskBadge(latest.overall_risk_level || 'low')}
+                              <span className="text-sm text-muted-foreground">
+                                {new Date(latest.created_at).toLocaleDateString('en-IN', {
+                                  year: 'numeric', month: 'long', day: 'numeric'
+                                })}
+                              </span>
+                            </div>
+                            
+                            {/* Probability Indices */}
+                            <div className="grid gap-4">
+                              {[
+                                { label: 'Dyslexia Probability', value: dyslexia, color: 'bg-primary' },
+                                { label: 'ADHD Probability', value: adhd, color: 'bg-warning' },
+                                { label: 'Dysgraphia Probability', value: dysgraphia, color: 'bg-destructive' },
+                              ].map((item) => (
+                                <div key={item.label} className="space-y-1">
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-muted-foreground">{item.label}</span>
+                                    <span className="font-semibold">{item.value}%</span>
+                                  </div>
+                                  <div className="h-2 rounded-full bg-muted">
+                                    <div
+                                      className={`h-full rounded-full ${item.color}`}
+                                      style={{ width: `${Math.min(item.value, 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Key Metrics */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4 border-t">
+                              <div className="text-center p-3 rounded-lg bg-muted/50">
+                                <p className="text-lg font-bold">{latest.eye_total_fixations ?? 0}</p>
+                                <p className="text-xs text-muted-foreground">Fixations</p>
+                              </div>
+                              <div className="text-center p-3 rounded-lg bg-muted/50">
+                                <p className="text-lg font-bold">{latest.eye_regression_count ?? 0}</p>
+                                <p className="text-xs text-muted-foreground">Regressions</p>
+                              </div>
+                              <div className="text-center p-3 rounded-lg bg-muted/50">
+                                <p className="text-lg font-bold">{latest.voice_words_per_minute ?? 0}</p>
+                                <p className="text-xs text-muted-foreground">WPM</p>
+                              </div>
+                              <div className="text-center p-3 rounded-lg bg-muted/50">
+                                <p className="text-lg font-bold">{latest.voice_fluency_score ?? 0}</p>
+                                <p className="text-xs text-muted-foreground">Fluency</p>
+                              </div>
+                            </div>
+
+                            <Button 
+                              variant="outline" 
+                              className="w-full"
+                              onClick={() => {
+                                setSelectedAssessment(latest);
+                                setActiveTab('reports');
+                              }}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View Full Report & AI Insights
+                            </Button>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
+
               {/* Empty state for individual users */}
               {isIndividual && selfAssessments.length === 0 && (
                 <Card>
@@ -498,8 +587,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
               
-              {/* Show longitudinal progress chart for clinicians */}
-              {!isIndividual && <StudentProgressChart />}
+              {/* Progress chart removed - one-time assessment platform */}
             </TabsContent>
 
             {/* Reports Tab */}
@@ -507,49 +595,49 @@ export default function DashboardPage() {
               {selectedAssessment ? (
                 <>
                   <GazeHeatmapReport 
-                    fixations={(selectedAssessment.assessment_results?.[0]?.raw_data as any)?.fixations || []}
-                    saccades={(selectedAssessment.assessment_results?.[0]?.raw_data as any)?.saccades || []}
+                    fixations={Array.isArray(selectedAssessment.fixation_data) ? selectedAssessment.fixation_data : []}
+                    saccades={Array.isArray(selectedAssessment.saccade_data) ? selectedAssessment.saccade_data : []}
                   />
                   
-                  {/* AI Insights Panel with real data */}
+                  {/* AI Insights Panel with real data from flat diagnostic_results columns */}
                   <AIInsightsPanel 
                     diagnosticResult={{
-                      dyslexiaProbabilityIndex: selectedAssessment.assessment_results?.[0]?.dyslexia_biomarkers?.dyslexia_probability_index ?? 0,
-                      adhdProbabilityIndex: selectedAssessment.assessment_results?.[0]?.dyslexia_biomarkers?.adhd_probability_index ?? 0,
-                      dysgraphiaProbabilityIndex: selectedAssessment.assessment_results?.[0]?.dyslexia_biomarkers?.dysgraphia_probability_index ?? 0,
-                      overallRiskLevel: selectedAssessment.assessment_results?.[0]?.dyslexia_biomarkers?.overall_risk_level ?? 'low',
+                      dyslexiaProbabilityIndex: Number(selectedAssessment.dyslexia_probability_index) ?? 0,
+                      adhdProbabilityIndex: Number(selectedAssessment.adhd_probability_index) ?? 0,
+                      dysgraphiaProbabilityIndex: Number(selectedAssessment.dysgraphia_probability_index) ?? 0,
+                      overallRiskLevel: (selectedAssessment.overall_risk_level as 'low' | 'moderate' | 'high') ?? 'low',
                       eyeTracking: {
-                        totalFixations: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.eyeTracking?.totalFixations ?? 0,
-                        averageFixationDuration: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.eyeTracking?.averageFixationDuration ?? 0,
-                        regressionCount: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.eyeTracking?.regressionCount ?? 0,
-                        prolongedFixations: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.eyeTracking?.prolongedFixations ?? 0,
-                        chaosIndex: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.eyeTracking?.chaosIndex ?? 0,
-                        fixationIntersectionCoefficient: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.eyeTracking?.fixationIntersectionCoefficient ?? 0,
+                        totalFixations: Number(selectedAssessment.eye_total_fixations) ?? 0,
+                        averageFixationDuration: Number(selectedAssessment.eye_avg_fixation_duration) ?? 0,
+                        regressionCount: Number(selectedAssessment.eye_regression_count) ?? 0,
+                        prolongedFixations: Number(selectedAssessment.eye_prolonged_fixations) ?? 0,
+                        chaosIndex: Number(selectedAssessment.eye_chaos_index) ?? 0,
+                        fixationIntersectionCoefficient: Number(selectedAssessment.eye_fixation_intersection_coefficient) ?? 0,
                       },
                       voice: {
-                        wordsPerMinute: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.wordsPerMinute ?? 0,
-                        pauseCount: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.pauseCount ?? 0,
-                        averagePauseDuration: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.averagePauseDuration ?? 0,
-                        phonemicErrors: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.phonemicErrors ?? 0,
-                        fluencyScore: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.fluencyScore ?? 0,
-                        prosodyScore: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.prosodyScore ?? 0,
-                        stallCount: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.stallCount ?? 0,
-                        averageStallDuration: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.averageStallDuration ?? 0,
-                        stallEvents: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.voice?.stallEvents ?? [],
+                        wordsPerMinute: Number(selectedAssessment.voice_words_per_minute) ?? 0,
+                        pauseCount: Number(selectedAssessment.voice_pause_count) ?? 0,
+                        averagePauseDuration: Number(selectedAssessment.voice_avg_pause_duration) ?? 0,
+                        phonemicErrors: Number(selectedAssessment.voice_phonemic_errors) ?? 0,
+                        fluencyScore: Number(selectedAssessment.voice_fluency_score) ?? 0,
+                        prosodyScore: Number(selectedAssessment.voice_prosody_score) ?? 0,
+                        stallCount: Number(selectedAssessment.voice_stall_count) ?? 0,
+                        averageStallDuration: Number(selectedAssessment.voice_avg_stall_duration) ?? 0,
+                        stallEvents: Array.isArray(selectedAssessment.voice_stall_events) ? selectedAssessment.voice_stall_events : [],
                       },
                       handwriting: {
-                        reversalCount: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.handwriting?.reversalCount ?? 0,
-                        letterCrowding: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.handwriting?.letterCrowding ?? 0,
-                        graphicInconsistency: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.handwriting?.graphicInconsistency ?? 0,
-                        lineAdherence: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.handwriting?.lineAdherence ?? 0,
+                        reversalCount: Number(selectedAssessment.handwriting_reversal_count) ?? 0,
+                        letterCrowding: Number(selectedAssessment.handwriting_letter_crowding) ?? 0,
+                        graphicInconsistency: Number(selectedAssessment.handwriting_graphic_inconsistency) ?? 0,
+                        lineAdherence: Number(selectedAssessment.handwriting_line_adherence) ?? 0,
                       },
                       cognitiveLoad: {
-                        averagePupilDilation: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.cognitiveLoad?.averagePupilDilation ?? 0,
-                        overloadEvents: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.cognitiveLoad?.overloadEvents ?? 0,
-                        stressIndicators: (selectedAssessment.assessment_results?.[0]?.raw_data as any)?.cognitiveLoad?.stressIndicators ?? 0,
+                        averagePupilDilation: Number(selectedAssessment.cognitive_avg_pupil_dilation) ?? 0,
+                        overloadEvents: Number(selectedAssessment.cognitive_overload_events) ?? 0,
+                        stressIndicators: Number(selectedAssessment.cognitive_stress_indicators) ?? 0,
                       },
                       timestamp: new Date(selectedAssessment.created_at),
-                      sessionId: selectedAssessment.assessment_results?.[0]?.dyslexia_biomarkers?.session_id ?? ''
+                      sessionId: selectedAssessment.session_id ?? ''
                     }}
                   />
                   
@@ -558,14 +646,22 @@ export default function DashboardPage() {
                       <CardTitle>Assessment Details</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
-                          <p className="text-sm text-muted-foreground">Risk Score</p>
-                          <p className="text-2xl font-bold">{selectedAssessment.assessment_results?.[0]?.overall_risk_score ?? 'N/A'}%</p>
+                          <p className="text-sm text-muted-foreground">Risk Level</p>
+                          <p className="text-2xl font-bold capitalize">{selectedAssessment.overall_risk_level ?? 'N/A'}</p>
                         </div>
                         <div>
                           <p className="text-sm text-muted-foreground">Fluency Score</p>
-                          <p className="text-2xl font-bold">{selectedAssessment.assessment_results?.[0]?.reading_fluency_score ?? 'N/A'}</p>
+                          <p className="text-2xl font-bold">{selectedAssessment.voice_fluency_score ?? 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Chaos Index</p>
+                          <p className="text-2xl font-bold">{Number(selectedAssessment.eye_chaos_index ?? 0).toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">WPM</p>
+                          <p className="text-2xl font-bold">{selectedAssessment.voice_words_per_minute ?? 'N/A'}</p>
                         </div>
                       </div>
                     </CardContent>
