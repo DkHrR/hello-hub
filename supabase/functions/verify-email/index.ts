@@ -155,11 +155,69 @@ function getVerificationEmailTemplate(userName: string, verificationLink: string
   `;
 }
 
+// Password reset email template
+function getPasswordResetEmailTemplate(userName: string, resetLink: string): string {
+  const safeName = sanitize(userName);
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #ef4444, #f97316); color: white; padding: 40px; text-align: center; }
+        .content { padding: 30px; }
+        .cta-button { display: inline-block; background: linear-gradient(135deg, #ef4444, #f97316); color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 20px 0; }
+        .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 12px; }
+        .warning { background: #fef9c3; border: 1px solid #fde68a; border-radius: 8px; padding: 15px; margin-top: 20px; color: #854d0e; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1 style="margin: 0; font-size: 28px;">🔑 Reset Your Password</h1>
+          <p style="margin: 10px 0 0; opacity: 0.9;">Neuro-Read X Clinical Platform</p>
+        </div>
+        <div class="content">
+          <h2 style="color: #333;">Hello ${safeName}!</h2>
+          <p style="color: #666; line-height: 1.6;">
+            We received a request to reset your password. Click the button below to create a new password.
+          </p>
+          <div style="text-align: center;">
+            <a href="${resetLink}" class="cta-button" style="color: white !important;">
+              🔑 Reset Password
+            </a>
+          </div>
+          <p style="color: #666; line-height: 1.6; font-size: 14px;">
+            Or copy and paste this link into your browser:
+          </p>
+          <p style="word-break: break-all; color: #ef4444; font-size: 14px;">
+            ${resetLink}
+          </p>
+          <div class="warning">
+            <p style="margin: 0;">
+              <strong>⚠️ This link expires in 1 hour.</strong><br>
+              If you didn't request a password reset, please ignore this email and your password will remain unchanged.
+            </p>
+          </div>
+        </div>
+        <div class="footer">
+          <p>Neuro-Read X - AI-Powered Learning Assessment Platform</p>
+          <p>© ${new Date().getFullYear()} All rights reserved</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
 interface RequestBody {
-  action: 'send' | 'verify' | 'resend';
+  action: 'send' | 'verify' | 'resend' | 'reset_password' | 'verify_reset';
   email?: string;
   token?: string;
   userName?: string;
+  newPassword?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -171,7 +229,6 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    // Create Supabase admin client (service role for token management)
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
@@ -186,16 +243,15 @@ const handler = async (req: Request): Promise<Response> => {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Get IP and User-Agent for audit log
     const ipAddress = req.headers.get("x-forwarded-for")?.split(',')[0]?.trim() || 
                       req.headers.get("x-real-ip") || 
                       "unknown";
     const userAgent = req.headers.get("user-agent") || "unknown";
 
     const body: RequestBody = await req.json();
-    const { action, email, token, userName } = body;
+    const { action, email, token, userName, newPassword } = body;
 
-    // === SEND VERIFICATION EMAIL ===
+    // === SEND / RESEND VERIFICATION EMAIL ===
     if (action === 'send' || action === 'resend') {
       if (!email || !isValidEmail(email)) {
         return new Response(
@@ -204,20 +260,17 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      // Find user by email
       const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
       if (listError) throw listError;
       
       const user = users.find(u => u.email === email);
       if (!user) {
-        // Return success to prevent email enumeration
         return new Response(
           JSON.stringify({ success: true, message: 'If the email exists, a verification link has been sent.' }),
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
 
-      // Check if already verified
       if (user.email_confirmed_at) {
         return new Response(
           JSON.stringify({ success: true, message: 'Email is already verified.' }),
@@ -225,19 +278,16 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      // Invalidate any existing tokens for this user
       await supabaseAdmin
         .from('email_verification_tokens')
         .update({ used_at: new Date().toISOString() })
         .eq('user_id', user.id)
         .is('used_at', null);
 
-      // Generate new token
       const rawToken = generateToken();
       const tokenHash = await hashToken(rawToken);
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-      // Store hashed token
       const { error: insertError } = await supabaseAdmin
         .from('email_verification_tokens')
         .insert({
@@ -248,11 +298,9 @@ const handler = async (req: Request): Promise<Response> => {
 
       if (insertError) throw insertError;
 
-      // Build verification URL
       const baseUrl = origin || 'https://lovable.app';
       const verificationUrl = `${baseUrl}/auth?verify=${rawToken}&email=${encodeURIComponent(email)}`;
 
-      // Send verification email via SMTP
       const displayName = userName || user.user_metadata?.display_name || email.split('@')[0];
       await sendSmtpEmail(
         email,
@@ -260,7 +308,6 @@ const handler = async (req: Request): Promise<Response> => {
         getVerificationEmailTemplate(displayName, verificationUrl)
       );
 
-      // Log audit event
       await supabaseAdmin
         .from('verification_audit_log')
         .insert({
@@ -279,7 +326,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // === VERIFY TOKEN ===
+    // === VERIFY EMAIL TOKEN ===
     if (action === 'verify') {
       if (!token || !email || !isValidEmail(email)) {
         return new Response(
@@ -288,7 +335,6 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      // Find user
       const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
       if (listError) throw listError;
       
@@ -300,10 +346,8 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      // Hash the provided token
       const tokenHash = await hashToken(token);
 
-      // Find valid token
       const { data: tokenData, error: tokenError } = await supabaseAdmin
         .from('email_verification_tokens')
         .select('*')
@@ -314,7 +358,6 @@ const handler = async (req: Request): Promise<Response> => {
         .single();
 
       if (tokenError || !tokenData) {
-        // Log failed attempt
         await supabaseAdmin
           .from('verification_audit_log')
           .insert({
@@ -331,13 +374,11 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      // Mark token as used
       await supabaseAdmin
         .from('email_verification_tokens')
         .update({ used_at: new Date().toISOString() })
         .eq('id', tokenData.id);
 
-      // Update user's email_confirmed_at via admin API
       const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
         user.id,
         { email_confirm: true }
@@ -345,13 +386,11 @@ const handler = async (req: Request): Promise<Response> => {
 
       if (updateError) throw updateError;
 
-      // Update profile email_verified flag
       await supabaseAdmin
         .from('profiles')
         .update({ email_verified: true })
         .eq('user_id', user.id);
 
-      // Log successful verification
       await supabaseAdmin
         .from('verification_audit_log')
         .insert({
@@ -366,6 +405,156 @@ const handler = async (req: Request): Promise<Response> => {
 
       return new Response(
         JSON.stringify({ success: true, message: 'Email verified successfully!' }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // === SEND PASSWORD RESET EMAIL VIA SMTP ===
+    if (action === 'reset_password') {
+      if (!email || !isValidEmail(email)) {
+        return new Response(
+          JSON.stringify({ success: true, message: 'If an account exists, a reset link has been sent.' }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+      if (listError) throw listError;
+      
+      const user = users.find(u => u.email === email);
+      if (!user) {
+        // Don't reveal if email exists
+        return new Response(
+          JSON.stringify({ success: true, message: 'If an account exists, a reset link has been sent.' }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Invalidate existing reset tokens for this user
+      await supabaseAdmin
+        .from('email_verification_tokens')
+        .update({ used_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .is('used_at', null);
+
+      const rawToken = generateToken();
+      const tokenHash = await hashToken(rawToken);
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      const { error: insertError } = await supabaseAdmin
+        .from('email_verification_tokens')
+        .insert({
+          user_id: user.id,
+          token_hash: tokenHash,
+          expires_at: expiresAt.toISOString()
+        });
+
+      if (insertError) throw insertError;
+
+      const baseUrl = origin || 'https://lovable.app';
+      const resetUrl = `${baseUrl}/reset-password?reset_token=${rawToken}&email=${encodeURIComponent(email)}`;
+
+      const displayName = user.user_metadata?.display_name || user.user_metadata?.name || email.split('@')[0];
+      await sendSmtpEmail(
+        email,
+        '🔑 Reset Your Password - Neuro-Read X',
+        getPasswordResetEmailTemplate(displayName, resetUrl)
+      );
+
+      await supabaseAdmin
+        .from('verification_audit_log')
+        .insert({
+          user_id: user.id,
+          action: 'password_reset_sent',
+          ip_address: ipAddress,
+          user_agent: userAgent,
+          metadata: { email_masked: email.replace(/^(.{2}).*@/, '$1***@') }
+        });
+
+      console.log('Password reset email sent via SMTP to:', email.replace(/^(.{2}).*@/, '$1***@'));
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'If an account exists, a reset link has been sent.' }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // === VERIFY RESET TOKEN AND UPDATE PASSWORD ===
+    if (action === 'verify_reset') {
+      if (!token || !email || !isValidEmail(email) || !newPassword) {
+        return new Response(
+          JSON.stringify({ error: 'Token, email, and new password are required' }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+      if (listError) throw listError;
+      
+      const user = users.find(u => u.email === email);
+      if (!user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid or expired reset link.' }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      const tokenHash = await hashToken(token);
+
+      const { data: tokenData, error: tokenError } = await supabaseAdmin
+        .from('email_verification_tokens')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('token_hash', tokenHash)
+        .is('used_at', null)
+        .gte('expires_at', new Date().toISOString())
+        .single();
+
+      if (tokenError || !tokenData) {
+        await supabaseAdmin
+          .from('verification_audit_log')
+          .insert({
+            user_id: user.id,
+            action: 'reset_token_expired',
+            ip_address: ipAddress,
+            user_agent: userAgent,
+            metadata: { reason: 'Reset token not found or expired' }
+          });
+
+        return new Response(
+          JSON.stringify({ error: 'Invalid or expired reset link.' }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Mark token as used
+      await supabaseAdmin
+        .from('email_verification_tokens')
+        .update({ used_at: new Date().toISOString() })
+        .eq('id', tokenData.id);
+
+      // Update password via admin API
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+        user.id,
+        { password: newPassword }
+      );
+
+      if (updateError) throw updateError;
+
+      await supabaseAdmin
+        .from('verification_audit_log')
+        .insert({
+          user_id: user.id,
+          action: 'password_reset_complete',
+          ip_address: ipAddress,
+          user_agent: userAgent,
+          metadata: { reset_at: new Date().toISOString() }
+        });
+
+      console.log('Password reset successfully for user:', user.id);
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'Password updated successfully!' }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }

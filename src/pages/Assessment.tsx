@@ -78,7 +78,6 @@ export default function AssessmentPage() {
   const [readingStartTime, setReadingStartTime] = useState<number | null>(null);
   const [readingElapsed, setReadingElapsed] = useState(0);
   const MINIMUM_READING_SECONDS = 30;
-  const MINIMUM_FIXATIONS = 10;
   
   const controller = useAssessmentController({
     studentId: urlStudentId || undefined,
@@ -129,10 +128,8 @@ export default function AssessmentPage() {
     return () => sessionPersistence.stopAutoSave();
   }, [controller.step, readingElapsed]);
 
-  // Check if reading requirements are met
-  const readingRequirementsMet = 
-    readingElapsed >= MINIMUM_READING_SECONDS && 
-    controller.eyeTracking.fixations.length >= MINIMUM_FIXATIONS;
+  // Check if reading requirements are met (only time-based, fixations are informational)
+  const readingRequirementsMet = readingElapsed >= MINIMUM_READING_SECONDS;
 
   // Check if voice requirements are met (at least 50 characters of transcript)
   const voiceRequirementsMet = controller.speechRecognition.transcript.length >= 50;
@@ -415,11 +412,11 @@ export default function AssessmentPage() {
                       {/* Reading completion progress */}
                       <div className="text-sm text-muted-foreground">
                         <span className={readingElapsed >= MINIMUM_READING_SECONDS ? 'text-success' : ''}>
-                          {readingElapsed}s / {MINIMUM_READING_SECONDS}s
+                          ⏱ {Math.max(0, MINIMUM_READING_SECONDS - readingElapsed)}s remaining
                         </span>
                         {' | '}
-                        <span className={controller.eyeTracking.fixations.length >= MINIMUM_FIXATIONS ? 'text-success' : ''}>
-                          {controller.eyeTracking.fixations.length} / {MINIMUM_FIXATIONS} fixations
+                        <span className="text-muted-foreground/60">
+                          {controller.eyeTracking.fixations.length} fixations tracked
                         </span>
                       </div>
                       <Button 
