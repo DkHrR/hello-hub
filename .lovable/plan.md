@@ -1,145 +1,120 @@
 
-# Plan: Dataset-Driven Diagnostic Engine
 
-## Overview
-Transform the current hardcoded diagnostic system into a data-driven one. The uploaded ETDD-70 dataset (35 dyslexic + 35 non-dyslexic students) will be processed, stored as structured reference profiles, and used to calibrate the diagnostic thresholds and scoring -- making dyslexia detection more accurate. The architecture will also support future ADHD and dysgraphia datasets.
+# Plan: Fix Email Duplication, Biometric Pre-Check, Assessment Logic, and Diagnostics
 
-## Current State
-- Diagnostic thresholds (fixation duration, regression rate, chaos index, etc.) are **hardcoded** in `etdd70Engine.ts` and `useDyslexiaClassifier.ts`
-- The chunked upload system stores raw files but does **nothing** with them after upload
-- No mechanism exists to extract features from dataset files and use them as reference data
+## Issues Identified and Solutions
 
-## What We Will Build
+### 1. Duplicate Confirmation Emails (User Gets 2 Emails)
 
-### 1. Dataset Reference Profiles Table
-A new database table `dataset_reference_profiles` to store processed feature data extracted from the uploaded dataset files.
+**Root Cause:** When a user signs up, `supabase.auth.signUp()` in `AuthContext.tsx` triggers Supabase's built-in confirmation email. Then the Auth page ALSO calls `sendVerificationEmail()` via the custom SMTP `verify-email` edge function. This results in 2 emails.
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| id | uuid | Primary key |
-| dataset_type | text | 'dyslexia', 'adhd', 'dysgraphia' |
-| subject_label | text | e.g., 'D01', 'N15' (dyslexic/non-dyslexic ID) |
-| is_positive | boolean | true = has condition, false = control |
-| features | jsonb | Extracted metrics (fixation durations, regression rates, chaos index, etc.) |
-| source_upload_id | uuid | Links back to chunked_uploads |
-| uploaded_by | uuid | Clinician who uploaded |
-| created_at | timestamptz | Auto timestamp |
+**Fix:** Disable Supabase's built-in email confirmation using the `configure-auth` tool to enable auto-confirm. The custom SMTP verification flow will handle everything -- the `verify-email` edge function already manages token generation, email sending, and marking `email_confirmed_at` via admin API. The `profiles.email_verified` flag and the custom flow remain the source of truth.
 
-RLS: Users can read all profiles (reference data is shared), but only insert/update/delete their own.
+### 2. Forgot Password Uses Built-in Email Instead of SMTP
 
-### 2. Computed Thresholds Table
-A `dataset_computed_thresholds` table to cache the statistically computed thresholds from reference profiles.
+**Root Cause:** `resetPassword()` in `AuthContext.tsx` calls `supabase.auth.resetPasswordForEmail()`, which uses Supabase's built-in email system. There is no custom SMTP equivalent for password reset.
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| id | uuid | Primary key |
-| dataset_type | text | 'dyslexia', 'adhd', 'dysgraphia' |
-| metric_name | text | e.g., 'fixation_duration_avg', 'regression_rate' |
-| positive_mean | numeric | Mean for positive (diagnosed) group |
-| positive_std | numeric | Std deviation for positive group |
-| negative_mean | numeric | Mean for control group |
-| negative_std | numeric | Std deviation for control group |
-| optimal_threshold | numeric | Computed optimal cutoff |
-| weight | numeric | Computed feature importance |
-| sample_size_positive | integer | Number of positive samples |
-| sample_size_negative | integer | Number of negative samples |
-| computed_at | timestamptz | When thresholds were last calculated |
+**Fix:** Create a custom password reset flow using SMTP:
+- Add a `password_reset` action to the `verify-email` edge function that generates a reset token, stores it in `email_verification_tokens`, and sends a reset link via SMTP
+- Add a `useSmtpPasswordReset` hook (or extend `useSmtpVerification`) with `sendPasswordResetEmail()` and `verifyResetToken()`
+- Update `AuthContext.tsx` `resetPassword()` to call the custom SMTP function instead of `supabase.auth.resetPasswordForEmail()`
+- Update `ResetPassword.tsx` to handle the custom token verification
 
-RLS: Readable by all authenticated users. Only service role can write (via edge function).
+### 3. Biometric Pre-Check is Overly Complex
 
-### 3. Dataset Processing Edge Function (`process-dataset`)
-A new edge function that:
-1. Takes an upload ID and dataset type as input
-2. Reads the uploaded files from storage (via the chunked upload system)
-3. Parses the dataset files (CSV/JSON with handwriting feature data)
-4. Extracts features per subject (fixation metrics, regression rates, handwriting scores)
-5. Stores each subject's features as a row in `dataset_reference_profiles`
-6. Recomputes statistical thresholds using positive vs. negative group comparison
-7. Updates `dataset_computed_thresholds` with new optimal thresholds and weights
+**Root Cause:** The pre-check currently validates 4 things: luminosity, camera focus, face centered, face distance. For pupil tracking, we only need to verify that the eyes are clearly visible. The face detection uses crude variance-based heuristics that often fail.
 
-### 4. Enhanced DatasetUploader UI
-Update the upload page to:
-- Let users specify the **dataset type** (Dyslexia / ADHD / Dysgraphia) before upload
-- Add a **"Process Dataset"** button that appears after upload completes
-- Show processing status and results (number of profiles extracted, thresholds computed)
-- Display a summary of computed thresholds vs. current hardcoded values
+**Fix:** Simplify `BiometricPreCheck.tsx` to only check 2 things:
+- **Camera Access:** Camera is working and streaming
+- **Eyes Visible:** Use MediaPipe FaceMesh to detect iris landmarks (indices 468-477). If iris landmarks are detected, eyes are visible and pupil tracking will work.
 
-### 5. Data-Driven Diagnostic Engine
-Modify the diagnostic engine to:
-- On initialization, fetch computed thresholds from `dataset_computed_thresholds`
-- If dataset-derived thresholds exist, use them instead of hardcoded defaults
-- Fall back to hardcoded thresholds if no dataset has been processed yet
-- Use a **nearest-neighbor comparison** against reference profiles for a secondary confidence score
+Remove the luminosity, focus, face distance, and face centered checks. Replace with a single "Eyes Detected" check using actual MediaPipe. This is more accurate and directly validates what we need.
 
-## Architecture Flow
+### 4. Reading Assessment Fixation Gate Logic is Wrong
 
-```text
-Upload Dataset Files
-       |
-       v
-Chunked Upload (existing) --> Storage bucket
-       |
-       v
-"Process Dataset" button click
-       |
-       v
-process-dataset Edge Function
-  |-- Reads files from storage
-  |-- Parses CSV/JSON features per subject
-  |-- Stores in dataset_reference_profiles
-  |-- Computes group statistics (positive vs negative)
-  |-- Stores in dataset_computed_thresholds
-       |
-       v
-Diagnostic Engine (enhanced)
-  |-- Fetches computed thresholds on load
-  |-- Uses data-driven thresholds for scoring
-  |-- Compares new assessments against reference profiles
-  |-- Produces more accurate probability indices
-```
+**Root Cause:** The "Continue to Voice Test" button requires `fixations.length >= 10`. Fixations are detected when gaze stays in a ~30px radius for >100ms. This is a valid metric for reading behavior, NOT about blinking. However, if MediaPipe/WebGazer isn't properly tracking gaze, fixations won't accumulate.
+
+The real issue is likely that eye tracking initialization isn't working well for all users. The fixation requirement itself is clinically valid (ensures actual reading data was captured).
+
+**Fix:** 
+- Change the gate from requiring fixations to requiring just the time component (30 seconds of reading). The fixation count becomes informational only, not blocking.
+- Keep tracking fixations for diagnostic purposes, but don't block the user from proceeding.
+- Update the button text to be clearer: show a countdown timer instead of "fixations" jargon.
+
+### 5. Diagnostic Engine -- Use Only Dyslexia Dataset for Now
+
+**Current State:** The engine already handles this correctly. `calculateADHDIndex` and `calculateDysgraphiaIndex` use hardcoded fallback thresholds since no ADHD/dysgraphia datasets exist. Only dyslexia thresholds are data-driven (confirmed: 6 computed thresholds in `dataset_computed_thresholds`).
+
+**Fix:** No changes needed for the diagnostic engine itself. It already falls back to hardcoded defaults for ADHD and dysgraphia. When future datasets are uploaded, they'll automatically calibrate those indices too.
+
+---
 
 ## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `supabase/functions/process-dataset/index.ts` | Edge function to parse dataset and compute thresholds |
-| `src/hooks/useDatasetThresholds.ts` | Hook to fetch and manage dataset-derived thresholds |
-| Migration SQL | Create `dataset_reference_profiles` and `dataset_computed_thresholds` tables |
+| (none -- all changes are modifications) | |
 
 ## Files to Modify
 
 | File | Change |
-|------|---------|
-| `src/components/dataset/DatasetUploader.tsx` | Add dataset type selector, process button, and results display |
-| `src/pages/DatasetUpload.tsx` | Minor layout updates to accommodate new features |
-| `src/lib/etdd70Engine.ts` | Accept dynamic thresholds from database instead of only hardcoded values |
-| `src/hooks/useDiagnosticEngine.ts` | Integrate dataset thresholds into probability calculations |
-| `src/hooks/useDyslexiaClassifier.ts` | Use data-driven weights when available |
-| `supabase/config.toml` | Register the new `process-dataset` edge function |
+|------|--------|
+| `supabase/functions/verify-email/index.ts` | Add `reset_password` and `verify_reset` actions for SMTP-based password reset flow |
+| `src/hooks/useSmtpVerification.ts` | Add `sendPasswordResetEmail()` and `verifyResetToken()` methods |
+| `src/contexts/AuthContext.tsx` | Change `resetPassword()` to use custom SMTP instead of `supabase.auth.resetPasswordForEmail()` |
+| `src/pages/Auth.tsx` | Update forgot password handler to use SMTP reset, handle reset token from URL |
+| `src/pages/ResetPassword.tsx` | Handle custom reset token verification before allowing password change |
+| `src/components/assessment/BiometricPreCheck.tsx` | Simplify to only check camera access + eyes visible via MediaPipe FaceMesh iris detection |
+| `src/pages/Assessment.tsx` | Remove fixation count from the reading gate -- only require 30s of reading time |
+
+## Configuration Changes
+
+- Use `configure-auth` to enable auto-confirm email signups (disables built-in confirmation emails), since our custom SMTP flow handles verification independently
 
 ## Technical Details
 
-### Dataset File Format Support
-The processing function will support:
-- **CSV files**: Columns for subject ID, label (dyslexic/control), and metric values
-- **JSON files**: Array of objects with subject data
-- Standard column names: `subject_id`, `label`, `fixation_duration_avg`, `regression_rate`, `saccade_amplitude`, `chaos_index`, `reading_speed_wpm`, etc.
+### Password Reset via SMTP Flow
 
-### Threshold Computation Algorithm
-For each metric:
-1. Separate data into positive (diagnosed) and negative (control) groups
-2. Calculate mean and standard deviation for each group
-3. Compute optimal threshold using the midpoint between group means, weighted by standard deviations
-4. Calculate feature importance (weight) based on effect size (Cohen's d)
-5. Store results for use by the diagnostic engine
+```text
+User clicks "Forgot Password"
+       |
+       v
+Frontend calls verify-email edge function with action: 'reset_password'
+       |
+       v
+Edge function generates reset token, stores hash in email_verification_tokens
+       |
+       v
+SMTP sends email with link: /auth?reset_token=xxx&email=yyy
+       |
+       v
+User clicks link, Auth page detects reset_token param
+       |
+       v
+Redirects to /reset-password with token in state
+       |
+       v
+User enters new password, ResetPassword page calls verify-email with action: 'verify_reset'
+       |
+       v
+Edge function validates token, uses admin API to update password
+```
 
-### Fallback Strategy
-- If no dataset has been processed, the system continues using hardcoded ETDD-70 thresholds (current behavior)
-- Partial datasets work too: if only dyslexia data exists, only dyslexia thresholds are data-driven; ADHD/dysgraphia remain hardcoded
-- A visual indicator in the dashboard shows whether thresholds are "data-driven" or "default"
+### Simplified Biometric Pre-Check
 
-### Future ADHD and Dysgraphia Support
-The architecture is generic by design:
-- `dataset_type` field supports 'dyslexia', 'adhd', 'dysgraphia'
-- Each dataset type has its own set of relevant metrics and thresholds
-- The processing function handles all three types with appropriate feature extraction
+The new pre-check will:
+1. Request camera access
+2. Load MediaPipe FaceMesh (already available via CDN)
+3. Process a few frames to detect iris landmarks (indices 468-477)
+4. If iris landmarks found with >4 points per eye, mark "Eyes Detected" as pass
+5. Enable "Start Assessment" button
+
+This removes 3 unnecessary checks and replaces them with one that directly validates pupil tracking readiness.
+
+### Reading Gate Simplification
+
+Current gate: `readingElapsed >= 30 AND fixations.length >= 10`
+New gate: `readingElapsed >= 30`
+
+The fixation count will still be tracked and displayed as an info metric, but won't block the user from proceeding. This prevents users from getting stuck if eye tracking has issues while still collecting whatever gaze data is available.
+
