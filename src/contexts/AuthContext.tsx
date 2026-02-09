@@ -158,12 +158,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
-    const redirectUrl = `${window.location.origin}/auth?type=recovery`;
-    
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectUrl,
-    });
-    return { error };
+    // Custom SMTP-based password reset - calls verify-email edge function
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-email', {
+        body: { action: 'reset_password', email }
+      });
+      if (error) return { error };
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
   const signOut = async () => {

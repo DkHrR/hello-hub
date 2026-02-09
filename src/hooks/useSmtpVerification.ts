@@ -9,6 +9,8 @@ interface UseSmtpVerificationReturn {
   sendVerificationEmail: (email: string, userName?: string) => Promise<boolean>;
   resendVerificationEmail: (email: string, userName?: string) => Promise<boolean>;
   verifyToken: (token: string, email: string) => Promise<boolean>;
+  sendPasswordResetEmail: (email: string) => Promise<boolean>;
+  verifyResetToken: (token: string, email: string, newPassword: string) => Promise<boolean>;
 }
 
 export function useSmtpVerification(): UseSmtpVerificationReturn {
@@ -23,11 +25,7 @@ export function useSmtpVerification(): UseSmtpVerificationReturn {
     
     try {
       const { data, error } = await supabase.functions.invoke('verify-email', {
-        body: {
-          action: 'send',
-          email,
-          userName
-        }
+        body: { action: 'send', email, userName }
       });
 
       if (error) throw error;
@@ -55,11 +53,7 @@ export function useSmtpVerification(): UseSmtpVerificationReturn {
     
     try {
       const { data, error } = await supabase.functions.invoke('verify-email', {
-        body: {
-          action: 'resend',
-          email,
-          userName
-        }
+        body: { action: 'resend', email, userName }
       });
 
       if (error) throw error;
@@ -87,11 +81,7 @@ export function useSmtpVerification(): UseSmtpVerificationReturn {
     
     try {
       const { data, error } = await supabase.functions.invoke('verify-email', {
-        body: {
-          action: 'verify',
-          token,
-          email
-        }
+        body: { action: 'verify', token, email }
       });
 
       if (error) throw error;
@@ -111,11 +101,65 @@ export function useSmtpVerification(): UseSmtpVerificationReturn {
     }
   }, []);
 
+  const sendPasswordResetEmail = useCallback(async (email: string): Promise<boolean> => {
+    setIsSending(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-email', {
+        body: { action: 'reset_password', email }
+      });
+
+      if (error) throw error;
+
+      // Always show success to prevent enumeration
+      toast.success('If an account exists with this email, a reset link has been sent.');
+      return true;
+    } catch (error: any) {
+      logger.error('Failed to send password reset email', error);
+      // Still show success message to prevent enumeration
+      toast.success('If an account exists with this email, a reset link has been sent.');
+      return false;
+    } finally {
+      setIsSending(false);
+    }
+  }, []);
+
+  const verifyResetToken = useCallback(async (
+    token: string,
+    email: string,
+    newPassword: string
+  ): Promise<boolean> => {
+    setIsVerifying(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-email', {
+        body: { action: 'verify_reset', token, email, newPassword }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success('Password updated successfully!');
+        return true;
+      } else {
+        throw new Error(data?.error || 'Invalid or expired reset link');
+      }
+    } catch (error: any) {
+      logger.error('Password reset failed', error);
+      toast.error(logger.getUserMessage(error, 'Invalid or expired reset link'));
+      return false;
+    } finally {
+      setIsVerifying(false);
+    }
+  }, []);
+
   return {
     isSending,
     isVerifying,
     sendVerificationEmail,
     resendVerificationEmail,
-    verifyToken
+    verifyToken,
+    sendPasswordResetEmail,
+    verifyResetToken
   };
 }

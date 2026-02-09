@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { z } from 'zod';
-import { supabase } from '@/integrations/supabase/client';
+import { useSmtpVerification } from '@/hooks/useSmtpVerification';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Brain, Lock, Loader2, CheckCircle } from 'lucide-react';
+import { Brain, Lock, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
 const passwordSchema = z.string()
   .min(12, 'Password must be at least 12 characters')
@@ -20,20 +20,23 @@ const passwordSchema = z.string()
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { verifyResetToken, isVerifying } = useSmtpVerification();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
 
-  const isRecoveryMode = searchParams.get('type') === 'recovery';
+  const resetToken = searchParams.get('reset_token');
+  const email = searchParams.get('email');
 
   useEffect(() => {
-    // If not in recovery mode, redirect to auth
-    if (!isRecoveryMode) {
+    // If no reset token or email, redirect to auth
+    if (!resetToken || !email) {
+      toast.error('Invalid or missing reset link.');
       navigate('/auth');
     }
-  }, [isRecoveryMode, navigate]);
+  }, [resetToken, email, navigate]);
 
   const validatePassword = (value: string) => {
     try {
@@ -59,21 +62,22 @@ export default function ResetPasswordPage() {
     }
     setErrors(prev => ({ ...prev, confirm: undefined }));
 
+    if (!resetToken || !email) {
+      toast.error('Invalid reset link.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: password
-      });
+      const success = await verifyResetToken(resetToken, email, password);
 
-      if (error) throw error;
-
-      setIsSuccess(true);
-      toast.success('Password updated successfully');
-      
-      // Redirect to dashboard after 2 seconds
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+      if (success) {
+        setIsSuccess(true);
+        // Redirect to auth page after 2 seconds
+        setTimeout(() => {
+          navigate('/auth');
+        }, 2000);
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to update password');
     } finally {
@@ -81,7 +85,7 @@ export default function ResetPasswordPage() {
     }
   };
 
-  if (!isRecoveryMode) {
+  if (!resetToken || !email) {
     return null;
   }
 
@@ -127,7 +131,7 @@ export default function ResetPasswordPage() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Password Updated!</h3>
                 <p className="text-muted-foreground text-sm">
-                  Redirecting you to the dashboard...
+                  Redirecting you to sign in...
                 </p>
               </motion.div>
             ) : (
@@ -172,8 +176,8 @@ export default function ResetPasswordPage() {
                   )}
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
-                  {isSubmitting ? (
+                <Button type="submit" className="w-full" disabled={isSubmitting || isVerifying}>
+                  {isSubmitting || isVerifying ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
                       Updating Password...

@@ -291,7 +291,6 @@ export default function AuthPage() {
     setIsSubmitting(false);
     
     // Always show success message to prevent account enumeration
-    // Even if email doesn't exist, we don't reveal that information
     if (error) {
       logger.error('Password reset failed', error);
     }

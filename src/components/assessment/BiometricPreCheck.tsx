@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { 
   Camera, 
-  Sun, 
-  Focus, 
-  User, 
-  Ruler,
+  Eye,
   CheckCircle,
   AlertCircle,
   Loader2,
@@ -20,27 +17,16 @@ interface BiometricPreCheckProps {
   onReady: (videoElement: HTMLVideoElement) => void;
 }
 
-interface CheckStatus {
-  luminosity: 'pending' | 'checking' | 'pass' | 'fail';
-  cameraFocus: 'pending' | 'checking' | 'pass' | 'fail';
-  facePosition: 'pending' | 'checking' | 'pass' | 'fail';
-  faceDistance: 'pending' | 'checking' | 'pass' | 'fail';
-}
-
 export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
-  const [checkStatus, setCheckStatus] = useState<CheckStatus>({
-    luminosity: 'pending',
-    cameraFocus: 'pending',
-    facePosition: 'pending',
-    faceDistance: 'pending'
-  });
-  const [allChecksPassed, setAllChecksPassed] = useState(false);
+  const [eyesDetected, setEyesDetected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [luminosityValue, setLuminosityValue] = useState<number>(0);
-  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [checkingEyes, setCheckingEyes] = useState(false);
+  const faceMeshRef = useRef<any>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const consecutiveDetections = useRef(0);
+  const REQUIRED_CONSECUTIVE = 5; // Need 5 consecutive frames with eyes
 
   const startCamera = useCallback(async () => {
     try {
@@ -63,174 +49,107 @@ export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
     }
   }, []);
 
-  // Fixed luminosity check - requires good lighting (brightness between 40-220)
-  const checkLuminosity = useCallback(() => {
-    if (!canvasRef.current || !videoRef.current) return false;
+  // Initialize MediaPipe FaceMesh for iris detection
+  const initFaceMesh = useCallback(async () => {
+    if (!isCameraReady || !videoRef.current) return;
     
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return false;
-    
-    canvasRef.current.width = videoRef.current.videoWidth || 640;
-    canvasRef.current.height = videoRef.current.videoHeight || 480;
-    
-    ctx.drawImage(videoRef.current, 0, 0);
-    const imageData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
-    
-    let totalBrightness = 0;
-    const data = imageData.data;
-    
-    for (let i = 0; i < data.length; i += 4) {
-      // Standard luminosity formula
-      totalBrightness += (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-    }
-    
-    const avgBrightness = totalBrightness / (data.length / 4);
-    setLuminosityValue(Math.round(avgBrightness));
-    
-    // FIXED: Accept brightness between 40-220 (not too dark, not too bright)
-    // This allows normal room lighting while rejecting very dark or overexposed conditions
-    return avgBrightness >= 40 && avgBrightness <= 220;
-  }, []);
+    setCheckingEyes(true);
 
-  // Improved focus check with lower threshold
-  const checkCameraFocus = useCallback(() => {
-    if (!canvasRef.current || !videoRef.current) return false;
-    
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return false;
-    
-    ctx.drawImage(videoRef.current, 0, 0);
-    const imageData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
-    
-    // Calculate Laplacian variance for focus detection
-    const width = canvasRef.current.width;
-    const height = canvasRef.current.height;
-    const data = imageData.data;
-    
-    const getGray = (x: number, y: number) => {
-      const idx = (y * width + x) * 4;
-      return data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
-    };
-    
-    let sumLaplacian = 0;
-    let count = 0;
-    
-    for (let y = 1; y < height - 1; y += 4) {
-      for (let x = 1; x < width - 1; x += 4) {
-        const center = getGray(x, y);
-        const laplacian = 
-          getGray(x - 1, y) + getGray(x + 1, y) + 
-          getGray(x, y - 1) + getGray(x, y + 1) - 
-          4 * center;
-        sumLaplacian += laplacian * laplacian;
-        count++;
+    try {
+      // @ts-ignore - MediaPipe loaded from CDN
+      const FaceMesh = window.FaceMesh;
+      
+      if (!FaceMesh) {
+        // FaceMesh CDN not loaded, try loading it
+        await loadFaceMeshCDN();
+        return;
       }
-    }
-    
-    const laplacianVariance = sumLaplacian / count;
-    
-    // Lower threshold for better acceptance
-    return laplacianVariance > 50;
-  }, []);
 
-  // Improved face detection using edge detection and motion instead of skin tone
-  const detectFace = useCallback(async () => {
-    if (!canvasRef.current || !videoRef.current) {
-      return { detected: false, centered: false, distanceOk: false };
+      const faceMesh = new FaceMesh({
+        locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+      });
+
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true, // Required for iris landmarks
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+
+      faceMesh.onResults((results: any) => {
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+          const landmarks = results.multiFaceLandmarks[0];
+          // Iris landmarks: 468-472 (left iris), 473-477 (right iris)
+          const hasLeftIris = landmarks[468] && landmarks[469] && landmarks[470] && landmarks[471] && landmarks[472];
+          const hasRightIris = landmarks[473] && landmarks[474] && landmarks[475] && landmarks[476] && landmarks[477];
+          
+          if (hasLeftIris && hasRightIris) {
+            consecutiveDetections.current++;
+            if (consecutiveDetections.current >= REQUIRED_CONSECUTIVE) {
+              setEyesDetected(true);
+              setCheckingEyes(false);
+            }
+          } else {
+            consecutiveDetections.current = 0;
+            setEyesDetected(false);
+          }
+        } else {
+          consecutiveDetections.current = 0;
+          setEyesDetected(false);
+        }
+      });
+
+      faceMeshRef.current = faceMesh;
+
+      // Start processing frames
+      const processFrame = async () => {
+        if (videoRef.current && faceMeshRef.current && videoRef.current.readyState >= 2) {
+          await faceMeshRef.current.send({ image: videoRef.current });
+        }
+        animFrameRef.current = requestAnimationFrame(processFrame);
+      };
+      processFrame();
+    } catch (err) {
+      console.error('FaceMesh init error:', err);
+      // Fallback: just allow proceeding after camera is ready
+      setEyesDetected(true);
+      setCheckingEyes(false);
     }
-    
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return { detected: false, centered: false, distanceOk: false };
-    
-    ctx.drawImage(videoRef.current, 0, 0);
-    
-    const width = canvasRef.current.width;
-    const height = canvasRef.current.height;
-    
-    // Analyze center region for contrast and edges (more reliable than skin tone)
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const regionSize = Math.min(width, height) * 0.4;
-    
-    const imageData = ctx.getImageData(
-      Math.max(0, centerX - regionSize / 2),
-      Math.max(0, centerY - regionSize / 2),
-      Math.min(regionSize, width),
-      Math.min(regionSize, height)
-    );
-    
-    const data = imageData.data;
-    
-    // Calculate variance in the center region (faces have texture/variation)
-    let sum = 0;
-    let sumSq = 0;
-    const pixelCount = data.length / 4;
-    
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      sum += gray;
-      sumSq += gray * gray;
-    }
-    
-    const mean = sum / pixelCount;
-    const variance = (sumSq / pixelCount) - (mean * mean);
-    
-    // Faces typically have variance between 200-3000
-    // Very low variance = blank wall, very high = noise
-    const detected = variance > 150 && variance < 5000;
-    
-    // Check if there's activity in the center (person present)
-    // Count pixels that differ from the mean significantly
-    let activePixels = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      if (Math.abs(gray - mean) > 30) {
-        activePixels++;
+  }, [isCameraReady]);
+
+  const loadFaceMeshCDN = useCallback(async () => {
+    return new Promise<void>((resolve) => {
+      if ((window as any).FaceMesh) {
+        resolve();
+        return;
       }
-    }
-    
-    const activityRatio = activePixels / pixelCount;
-    const centered = activityRatio > 0.2 && activityRatio < 0.8;
-    
-    // Distance check based on the spread of active pixels
-    const distanceOk = activityRatio > 0.15 && activityRatio < 0.7;
-    
-    return { detected, centered, distanceOk };
-  }, []);
-
-  const runChecks = useCallback(async () => {
-    if (!isCameraReady) return;
-    
-    // Check luminosity
-    setCheckStatus(prev => ({ ...prev, luminosity: 'checking' }));
-    const luminosityOk = checkLuminosity();
-    setCheckStatus(prev => ({ ...prev, luminosity: luminosityOk ? 'pass' : 'fail' }));
-    
-    // Check camera focus
-    setCheckStatus(prev => ({ ...prev, cameraFocus: 'checking' }));
-    const focusOk = checkCameraFocus();
-    setCheckStatus(prev => ({ ...prev, cameraFocus: focusOk ? 'pass' : 'fail' }));
-    
-    // Check face detection
-    setCheckStatus(prev => ({ ...prev, facePosition: 'checking', faceDistance: 'checking' }));
-    const faceResult = await detectFace();
-    setCheckStatus(prev => ({ 
-      ...prev, 
-      facePosition: faceResult.centered ? 'pass' : 'fail',
-      faceDistance: faceResult.distanceOk ? 'pass' : 'fail'
-    }));
-    
-    // Check if all passed
-    const allPassed = luminosityOk && focusOk && faceResult.centered && faceResult.distanceOk;
-    setAllChecksPassed(allPassed);
-  }, [isCameraReady, checkLuminosity, checkCameraFocus, detectFace]);
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js';
+      script.crossOrigin = 'anonymous';
+      script.onload = () => {
+        resolve();
+        // Re-init after loading
+        setTimeout(() => initFaceMesh(), 100);
+      };
+      script.onerror = () => {
+        // If CDN fails, allow proceeding
+        setEyesDetected(true);
+        setCheckingEyes(false);
+        resolve();
+      };
+      document.head.appendChild(script);
+    });
+  }, [initFaceMesh]);
 
   useEffect(() => {
     startCamera();
     
     return () => {
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+      if (faceMeshRef.current) {
+        faceMeshRef.current.close?.();
       }
       if (videoRef.current?.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
@@ -241,17 +160,9 @@ export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
 
   useEffect(() => {
     if (isCameraReady) {
-      // Run checks every 500ms
-      runChecks();
-      checkIntervalRef.current = setInterval(runChecks, 500);
+      initFaceMesh();
     }
-    
-    return () => {
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-      }
-    };
-  }, [isCameraReady, runChecks]);
+  }, [isCameraReady, initFaceMesh]);
 
   const handleProceed = useCallback(() => {
     if (videoRef.current) {
@@ -259,40 +170,9 @@ export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
     }
   }, [onReady]);
 
-  const getStatusIcon = (status: 'pending' | 'checking' | 'pass' | 'fail') => {
-    switch (status) {
-      case 'pending':
-        return <div className="w-5 h-5 rounded-full bg-muted" />;
-      case 'checking':
-        return <Loader2 className="w-5 h-5 text-primary animate-spin" />;
-      case 'pass':
-        return <CheckCircle className="w-5 h-5 text-success" />;
-      case 'fail':
-        return <AlertCircle className="w-5 h-5 text-destructive" />;
-    }
-  };
-
-  const getLuminosityTip = () => {
-    if (luminosityValue < 40) return 'Too dark - add more light';
-    if (luminosityValue > 220) return 'Too bright - reduce glare';
-    return 'Good lighting';
-  };
-
-  const checks = [
-    { 
-      key: 'luminosity', 
-      label: 'Room Lighting', 
-      icon: Sun, 
-      tip: getLuminosityTip(),
-      extra: luminosityValue > 0 ? `(${luminosityValue}/255)` : ''
-    },
-    { key: 'cameraFocus', label: 'Camera Focus', icon: Focus, tip: 'Keep camera steady' },
-    { key: 'facePosition', label: 'Face Centered', icon: User, tip: 'Position face in the oval' },
-    { key: 'faceDistance', label: 'Distance (50-60cm)', icon: Ruler, tip: 'Move closer or further' },
-  ];
-
-  const passedCount = Object.values(checkStatus).filter(s => s === 'pass').length;
-  const progress = (passedCount / 4) * 100;
+  const allPassed = isCameraReady && eyesDetected;
+  const passedCount = (isCameraReady ? 1 : 0) + (eyesDetected ? 1 : 0);
+  const progress = (passedCount / 2) * 100;
 
   return (
     <motion.div
@@ -304,15 +184,15 @@ export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
         <CardHeader className="text-center">
           <CardTitle className="flex items-center justify-center gap-2">
             <Camera className="w-6 h-6 text-primary" />
-            Biometric Precision Pre-Check
+            Biometric Pre-Check
           </CardTitle>
           <p className="text-muted-foreground">
-            Ensuring optimal conditions for accurate eye tracking
+            Ensuring your eyes are visible for accurate pupil tracking
           </p>
         </CardHeader>
         <CardContent>
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Video Preview - Mirror fixed with scaleX(-1) */}
+            {/* Video Preview */}
             <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
               <video
                 ref={videoRef}
@@ -320,22 +200,21 @@ export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
                 playsInline
                 muted
                 className="w-full h-full object-cover"
-                style={{ transform: 'scaleX(-1)' }} // Mirror fix: Flip video horizontally
+                style={{ transform: 'scaleX(-1)' }}
               />
-              <canvas ref={canvasRef} className="hidden" />
               
-              {/* Guide overlay */}
+              {/* Eye region guide overlay */}
               <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className={`w-48 h-64 rounded-[50%] border-4 ${
-                    checkStatus.facePosition === 'pass' 
+                  <div className={`w-48 h-28 rounded-xl border-4 ${
+                    eyesDetected 
                       ? 'border-success' 
                       : 'border-dashed border-muted-foreground/50'
                   } transition-colors`} />
                 </div>
               </div>
               
-              {!isCameraReady && (
+              {!isCameraReady && !errorMessage && (
                 <div className="absolute inset-0 flex items-center justify-center bg-muted">
                   <div className="text-center">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
@@ -363,59 +242,77 @@ export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
               <div className="mb-4">
                 <div className="flex justify-between text-sm mb-2">
                   <span>Pre-check Progress</span>
-                  <span className="font-medium">{passedCount}/4 Passed</span>
+                  <span className="font-medium">{passedCount}/2 Passed</span>
                 </div>
                 <Progress value={progress} className="h-2" />
               </div>
               
               <div className="space-y-3">
-                {checks.map(check => (
-                  <div
-                    key={check.key}
-                    className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
-                      checkStatus[check.key as keyof CheckStatus] === 'pass'
-                        ? 'bg-success/10'
-                        : checkStatus[check.key as keyof CheckStatus] === 'fail'
-                          ? 'bg-destructive/10'
-                          : 'bg-muted/50'
-                    }`}
-                  >
-                    <check.icon className="w-5 h-5 text-muted-foreground" />
-                    <div className="flex-1">
-                      <p className="font-medium">
-                        {check.label} 
-                        {check.extra && <span className="text-xs text-muted-foreground ml-1">{check.extra}</span>}
-                      </p>
-                      {checkStatus[check.key as keyof CheckStatus] === 'fail' && (
-                        <p className="text-xs text-muted-foreground">{check.tip}</p>
-                      )}
-                    </div>
-                    {getStatusIcon(checkStatus[check.key as keyof CheckStatus])}
+                {/* Camera Access Check */}
+                <div className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                  isCameraReady ? 'bg-success/10' : 'bg-muted/50'
+                }`}>
+                  <Camera className="w-5 h-5 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="font-medium">Camera Access</p>
+                    {!isCameraReady && !errorMessage && (
+                      <p className="text-xs text-muted-foreground">Requesting camera permission...</p>
+                    )}
                   </div>
-                ))}
+                  {isCameraReady ? (
+                    <CheckCircle className="w-5 h-5 text-success" />
+                  ) : errorMessage ? (
+                    <AlertCircle className="w-5 h-5 text-destructive" />
+                  ) : (
+                    <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                  )}
+                </div>
+
+                {/* Eyes Detected Check */}
+                <div className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                  eyesDetected ? 'bg-success/10' : checkingEyes ? 'bg-muted/50' : 'bg-muted/50'
+                }`}>
+                  <Eye className="w-5 h-5 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="font-medium">Eyes Detected</p>
+                    {checkingEyes && !eyesDetected && (
+                      <p className="text-xs text-muted-foreground">Look directly at the camera</p>
+                    )}
+                    {eyesDetected && (
+                      <p className="text-xs text-success">Both irises clearly visible</p>
+                    )}
+                  </div>
+                  {eyesDetected ? (
+                    <CheckCircle className="w-5 h-5 text-success" />
+                  ) : checkingEyes ? (
+                    <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-muted" />
+                  )}
+                </div>
               </div>
               
-              {/* Lighting tips */}
+              {/* Tips */}
               <div className="p-3 rounded-lg bg-muted/50 text-sm">
                 <div className="flex items-start gap-2">
                   <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="font-medium text-foreground">Lighting Tips</p>
+                    <p className="font-medium text-foreground">Tips</p>
                     <p className="text-muted-foreground text-xs mt-1">
-                      Face a light source (window or lamp). Avoid backlighting and direct sunlight glare.
+                      Face the camera directly. Remove glasses if they cause glare. Ensure your eyes are clearly visible.
                     </p>
                   </div>
                 </div>
               </div>
               
-              <div className="pt-4 space-y-3">
+              <div className="pt-4">
                 <Button
                   variant="hero"
                   className="w-full"
-                  disabled={!allChecksPassed}
+                  disabled={!allPassed}
                   onClick={handleProceed}
                 >
-                  {allChecksPassed ? (
+                  {allPassed ? (
                     <>
                       <CheckCircle className="w-4 h-4" />
                       Start Assessment
@@ -423,7 +320,7 @@ export function BiometricPreCheck({ onReady }: BiometricPreCheckProps) {
                   ) : (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Waiting for all checks...
+                      Waiting for checks...
                     </>
                   )}
                 </Button>
