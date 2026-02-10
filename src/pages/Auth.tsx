@@ -124,10 +124,12 @@ export default function AuthPage() {
   useEffect(() => {
     if (user && !loading && !isRoleLoading) {
       // Check if email is confirmed
-      const isEmailConfirmed = user.email_confirmed_at || user.app_metadata?.provider === 'google';
+      const isOAuth = user.app_metadata?.provider === 'google';
+      // Use profile.email_verified (custom SMTP flag) as source of truth
+      const isEmailConfirmed = profile?.email_verified === true || isOAuth;
       
       if (!isEmailConfirmed) {
-        // User signed up but email not confirmed yet
+        // User signed up but email not verified via SMTP yet
         setShowEmailConfirmation(true);
         setPendingEmailConfirmation(user.email || '');
         return;
@@ -355,10 +357,14 @@ export default function AuthPage() {
                     
                     <Button
                       variant="outline"
-                      onClick={() => {
+                      onClick={async () => {
+                        // Sign out to prevent role selection flash
+                        await supabase.auth.signOut();
                         setShowEmailConfirmation(false);
                         setPendingEmailConfirmation('');
                         setPendingUserName('');
+                        setShowRoleSelection(false);
+                        setPendingUser(null);
                       }}
                       className="w-full"
                     >
