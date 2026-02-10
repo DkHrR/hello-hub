@@ -1,120 +1,117 @@
 
+# Fix Email System, Auth Flow, and Add Tech Beast Features
 
-# Plan: Fix Email Duplication, Biometric Pre-Check, Assessment Logic, and Diagnostics
+## Part 1: Critical Auth and Email Fixes
 
-## Issues Identified and Solutions
+### Problem 1: Emails Not Working Properly
+**Root Cause:** Since `auto_confirm_email` was enabled (to stop duplicate built-in emails), `user.email_confirmed_at` is now set immediately on signup. The entire auth flow checks `email_confirmed_at` to decide if the user is verified -- this makes the custom SMTP verification useless because the system thinks everyone is already verified.
 
-### 1. Duplicate Confirmation Emails (User Gets 2 Emails)
+**Fix:** Switch ALL verification checks from `user.email_confirmed_at` to `profile.email_verified` (the custom SMTP flag in the profiles table). This is the true source of truth set only when the user clicks the SMTP verification link.
 
-**Root Cause:** When a user signs up, `supabase.auth.signUp()` in `AuthContext.tsx` triggers Supabase's built-in confirmation email. Then the Auth page ALSO calls `sendVerificationEmail()` via the custom SMTP `verify-email` edge function. This results in 2 emails.
+**Files to modify:**
+- `src/components/auth/ProtectedRoute.tsx` -- Check `profile.email_verified` instead of `user.email_confirmed_at`
+- `src/pages/Auth.tsx` (line 127) -- Check `profile?.email_verified` instead of `user.email_confirmed_at`
 
-**Fix:** Disable Supabase's built-in email confirmation using the `configure-auth` tool to enable auto-confirm. The custom SMTP verification flow will handle everything -- the `verify-email` edge function already manages token generation, email sending, and marking `email_confirmed_at` via admin API. The `profiles.email_verified` flag and the custom flow remain the source of truth.
+### Problem 2: Back Button Shows Role Selection Flash
+**Root Cause:** When the user clicks "Back to Sign In" from the verification screen, it sets `showEmailConfirmation = false`. Since auto-confirm sets `email_confirmed_at` immediately, the useEffect sees a confirmed user with no role and shows role selection.
 
-### 2. Forgot Password Uses Built-in Email Instead of SMTP
+**Fix:**
+- The "Back to Sign In" button should sign the user OUT and reset the form to the login/signup screen
+- Add a guard: only show role selection if `profile?.email_verified === true`
+- Ensure the AnimatePresence transition order is: email confirmation check BEFORE role selection check
 
-**Root Cause:** `resetPassword()` in `AuthContext.tsx` calls `supabase.auth.resetPasswordForEmail()`, which uses Supabase's built-in email system. There is no custom SMTP equivalent for password reset.
+### Problem 3: Password Reset Link Not Being Received
+**Root Cause:** The edge function works (tested and confirmed with 200 response). The issue is the `handleForgotPassword` in `Auth.tsx` calls `resetPassword(email)` which calls `supabase.functions.invoke('verify-email', ...)`. Since the user is NOT logged in during forgot password, the Supabase client sends no auth token. The verify-email function has `verify_jwt = false` so it accepts unauthenticated calls -- this should work. However, the `origin` header may not be set correctly when the edge function constructs the reset link.
 
-**Fix:** Create a custom password reset flow using SMTP:
-- Add a `password_reset` action to the `verify-email` edge function that generates a reset token, stores it in `email_verification_tokens`, and sends a reset link via SMTP
-- Add a `useSmtpPasswordReset` hook (or extend `useSmtpVerification`) with `sendPasswordResetEmail()` and `verifyResetToken()`
-- Update `AuthContext.tsx` `resetPassword()` to call the custom SMTP function instead of `supabase.auth.resetPasswordForEmail()`
-- Update `ResetPassword.tsx` to handle the custom token verification
-
-### 3. Biometric Pre-Check is Overly Complex
-
-**Root Cause:** The pre-check currently validates 4 things: luminosity, camera focus, face centered, face distance. For pupil tracking, we only need to verify that the eyes are clearly visible. The face detection uses crude variance-based heuristics that often fail.
-
-**Fix:** Simplify `BiometricPreCheck.tsx` to only check 2 things:
-- **Camera Access:** Camera is working and streaming
-- **Eyes Visible:** Use MediaPipe FaceMesh to detect iris landmarks (indices 468-477). If iris landmarks are detected, eyes are visible and pupil tracking will work.
-
-Remove the luminosity, focus, face distance, and face centered checks. Replace with a single "Eyes Detected" check using actual MediaPipe. This is more accurate and directly validates what we need.
-
-### 4. Reading Assessment Fixation Gate Logic is Wrong
-
-**Root Cause:** The "Continue to Voice Test" button requires `fixations.length >= 10`. Fixations are detected when gaze stays in a ~30px radius for >100ms. This is a valid metric for reading behavior, NOT about blinking. However, if MediaPipe/WebGazer isn't properly tracking gaze, fixations won't accumulate.
-
-The real issue is likely that eye tracking initialization isn't working well for all users. The fixation requirement itself is clinically valid (ensures actual reading data was captured).
-
-**Fix:** 
-- Change the gate from requiring fixations to requiring just the time component (30 seconds of reading). The fixation count becomes informational only, not blocking.
-- Keep tracking fixations for diagnostic purposes, but don't block the user from proceeding.
-- Update the button text to be clearer: show a countdown timer instead of "fixations" jargon.
-
-### 5. Diagnostic Engine -- Use Only Dyslexia Dataset for Now
-
-**Current State:** The engine already handles this correctly. `calculateADHDIndex` and `calculateDysgraphiaIndex` use hardcoded fallback thresholds since no ADHD/dysgraphia datasets exist. Only dyslexia thresholds are data-driven (confirmed: 6 computed thresholds in `dataset_computed_thresholds`).
-
-**Fix:** No changes needed for the diagnostic engine itself. It already falls back to hardcoded defaults for ADHD and dysgraphia. When future datasets are uploaded, they'll automatically calibrate those indices too.
+**Fix:** Ensure the password reset flow correctly constructs the link using the published/preview URL. Also add console logging to debug if the SMTP send is actually being called. The ResetPassword page already handles `reset_token` and `email` URL params correctly.
 
 ---
 
-## Files to Create
+## Part 2: Auth Flow Changes (Detailed)
 
-| File | Purpose |
-|------|---------|
-| (none -- all changes are modifications) | |
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `supabase/functions/verify-email/index.ts` | Add `reset_password` and `verify_reset` actions for SMTP-based password reset flow |
-| `src/hooks/useSmtpVerification.ts` | Add `sendPasswordResetEmail()` and `verifyResetToken()` methods |
-| `src/contexts/AuthContext.tsx` | Change `resetPassword()` to use custom SMTP instead of `supabase.auth.resetPasswordForEmail()` |
-| `src/pages/Auth.tsx` | Update forgot password handler to use SMTP reset, handle reset token from URL |
-| `src/pages/ResetPassword.tsx` | Handle custom reset token verification before allowing password change |
-| `src/components/assessment/BiometricPreCheck.tsx` | Simplify to only check camera access + eyes visible via MediaPipe FaceMesh iris detection |
-| `src/pages/Assessment.tsx` | Remove fixation count from the reading gate -- only require 30s of reading time |
-
-## Configuration Changes
-
-- Use `configure-auth` to enable auto-confirm email signups (disables built-in confirmation emails), since our custom SMTP flow handles verification independently
-
-## Technical Details
-
-### Password Reset via SMTP Flow
-
-```text
-User clicks "Forgot Password"
-       |
-       v
-Frontend calls verify-email edge function with action: 'reset_password'
-       |
-       v
-Edge function generates reset token, stores hash in email_verification_tokens
-       |
-       v
-SMTP sends email with link: /auth?reset_token=xxx&email=yyy
-       |
-       v
-User clicks link, Auth page detects reset_token param
-       |
-       v
-Redirects to /reset-password with token in state
-       |
-       v
-User enters new password, ResetPassword page calls verify-email with action: 'verify_reset'
-       |
-       v
-Edge function validates token, uses admin API to update password
+### ProtectedRoute.tsx
 ```
+Before: checks user.email_confirmed_at
+After:  checks profile.email_verified (from AuthContext)
+```
+- Import and use `profile` from `useAuth()`
+- OAuth users (Google) bypass as before
+- Email/password users must have `profile?.email_verified === true`
 
-### Simplified Biometric Pre-Check
+### Auth.tsx useEffect (line 124-150)
+```
+Before: const isEmailConfirmed = user.email_confirmed_at || provider === 'google'
+After:  const isEmailConfirmed = profile?.email_verified || provider === 'google'
+```
+- Only proceed to role selection if custom SMTP verification is complete
+- Back button signs out the user to prevent the role selection flash
 
-The new pre-check will:
-1. Request camera access
-2. Load MediaPipe FaceMesh (already available via CDN)
-3. Process a few frames to detect iris landmarks (indices 468-477)
-4. If iris landmarks found with >4 points per eye, mark "Eyes Detected" as pass
-5. Enable "Start Assessment" button
+### Auth.tsx Back Button (line 356-366)
+```
+Before: Just hides the email confirmation screen
+After:  Signs out user + hides email confirmation screen
+```
+This prevents the useEffect from seeing an active user session and flashing role selection.
 
-This removes 3 unnecessary checks and replaces them with one that directly validates pupil tracking readiness.
+---
 
-### Reading Gate Simplification
+## Part 3: Tech Beast Features for 2027 Market Mind Forum
 
-Current gate: `readingElapsed >= 30 AND fixations.length >= 10`
-New gate: `readingElapsed >= 30`
+### Feature 1: CRAAP Test Data Reliability Score
+Add a data quality scoring system based on the CRAAP framework (Currency, Relevance, Authority, Accuracy, Purpose) for each dataset uploaded. This evaluates how trustworthy the diagnostic baselines are.
 
-The fixation count will still be tracked and displayed as an info metric, but won't block the user from proceeding. This prevents users from getting stuck if eye tracking has issues while still collecting whatever gaze data is available.
+**Implementation:**
+- Add a `data_quality_score` JSONB column to `dataset_reference_profiles` with CRAAP sub-scores
+- Create a `DataQualityBadge` component showing the reliability grade (A-F) on the dashboard
+- The `process-dataset` edge function will auto-calculate: Currency (publication date recency), Accuracy (statistical significance of sample size), Authority (source metadata)
 
+### Feature 2: TAM/SAM/SOM Market Visualization
+Build an admin-only analytics panel showing market penetration data with interactive charts.
+
+**Implementation:**
+- Create `src/pages/AdminAnalytics.tsx` with role-gated access (clinician only)
+- Use Recharts (already installed) for concentric donut charts showing TAM ($4.2B global dyslexia market), SAM (India K-12 segment), SOM (current user base)
+- Pull real user counts from the database to show actual SOM numbers
+
+### Feature 3: Competitor Matrix Dashboard
+A real-time comparison dashboard showing Neuro-Read X's diagnostic accuracy vs industry benchmarks.
+
+**Implementation:**
+- Create `src/components/dashboard/CompetitorMatrix.tsx`
+- Store competitor benchmark data in a `competitor_benchmarks` table
+- Radar chart comparing: Sensitivity, Specificity, AUC-ROC, Multi-modal coverage, Processing speed
+- Highlight Neuro-Read X's USP: "Assertive but Justifiable" -- clinical benchmarking backed by ETDD70 dataset
+
+### Feature 4: Teacher Feedback Loop (Primary Research)
+Integrate structured feedback collection from teachers/clinicians directly into the UI after each assessment.
+
+**Implementation:**
+- Create `teacher_feedback` table with structured fields (agreement with diagnosis, observed behaviors, severity rating)
+- Add a `TeacherFeedbackForm` component shown after viewing assessment results
+- Aggregate feedback to create a "Clinical Consensus Score" that strengthens diagnostic confidence
+- Feed this back into the normative engine as a calibration signal
+
+### Feature 5: Research Dashboard with Dataset CRAAP Scoring
+A dedicated admin view showing all uploaded datasets, their CRAAP scores, sample sizes, and impact on diagnostic thresholds.
+
+**Implementation:**
+- Create `src/pages/ResearchDashboard.tsx`
+- Visualize how each dataset shifts the diagnostic thresholds (before/after comparison)
+- Show Cohen's d effect sizes and statistical power for each metric
+
+---
+
+## Implementation Priority
+
+| Priority | Task | Files |
+|----------|------|-------|
+| 1 (Critical) | Fix ProtectedRoute to use profile.email_verified | `src/components/auth/ProtectedRoute.tsx` |
+| 2 (Critical) | Fix Auth.tsx verification check + back button | `src/pages/Auth.tsx` |
+| 3 (Critical) | Verify password reset SMTP delivery works end-to-end | `supabase/functions/verify-email/index.ts` (minor logging) |
+| 4 (Feature) | CRAAP Test scoring system | New component + DB migration |
+| 5 (Feature) | TAM/SAM/SOM market panel | New page + Recharts |
+| 6 (Feature) | Competitor Matrix | New component + DB table |
+| 7 (Feature) | Teacher Feedback Loop | New component + DB table |
+| 8 (Feature) | Research Dashboard | New page |
+
+Items 1-3 will be implemented immediately. Items 4-8 are the "Tech Beast" upgrades and will follow.
