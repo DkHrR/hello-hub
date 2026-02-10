@@ -271,7 +271,15 @@ const handler = async (req: Request): Promise<Response> => {
         );
       }
 
-      if (user.email_confirmed_at) {
+      // Check profile.email_verified (custom SMTP flag) instead of email_confirmed_at
+      // because auto_confirm_email is enabled, email_confirmed_at is always set
+      const { data: profileData } = await supabaseAdmin
+        .from('profiles')
+        .select('email_verified')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (profileData?.email_verified === true) {
         return new Response(
           JSON.stringify({ success: true, message: 'Email is already verified.' }),
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }

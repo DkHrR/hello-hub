@@ -113,6 +113,45 @@ export type Database = {
         }
         Relationships: []
       }
+      competitor_benchmarks: {
+        Row: {
+          auc_roc: number | null
+          competitor_name: string
+          created_at: string
+          id: string
+          last_updated: string
+          multimodal_coverage: number | null
+          processing_speed: number | null
+          sensitivity: number | null
+          source_url: string | null
+          specificity: number | null
+        }
+        Insert: {
+          auc_roc?: number | null
+          competitor_name: string
+          created_at?: string
+          id?: string
+          last_updated?: string
+          multimodal_coverage?: number | null
+          processing_speed?: number | null
+          sensitivity?: number | null
+          source_url?: string | null
+          specificity?: number | null
+        }
+        Update: {
+          auc_roc?: number | null
+          competitor_name?: string
+          created_at?: string
+          id?: string
+          last_updated?: string
+          multimodal_coverage?: number | null
+          processing_speed?: number | null
+          sensitivity?: number | null
+          source_url?: string | null
+          specificity?: number | null
+        }
+        Relationships: []
+      }
       dataset_computed_thresholds: {
         Row: {
           computed_at: string
@@ -161,6 +200,7 @@ export type Database = {
       dataset_reference_profiles: {
         Row: {
           created_at: string
+          data_quality_score: Json | null
           dataset_type: string
           features: Json
           id: string
@@ -171,6 +211,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          data_quality_score?: Json | null
           dataset_type: string
           features?: Json
           id?: string
@@ -181,6 +222,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          data_quality_score?: Json | null
           dataset_type?: string
           features?: Json
           id?: string
@@ -607,6 +649,60 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      teacher_feedback: {
+        Row: {
+          additional_notes: string | null
+          agrees_with_diagnosis: boolean | null
+          clinician_id: string
+          confidence_level: number | null
+          created_at: string
+          diagnostic_result_id: string | null
+          id: string
+          observed_behaviors: string[] | null
+          severity_rating: number | null
+          student_id: string | null
+        }
+        Insert: {
+          additional_notes?: string | null
+          agrees_with_diagnosis?: boolean | null
+          clinician_id: string
+          confidence_level?: number | null
+          created_at?: string
+          diagnostic_result_id?: string | null
+          id?: string
+          observed_behaviors?: string[] | null
+          severity_rating?: number | null
+          student_id?: string | null
+        }
+        Update: {
+          additional_notes?: string | null
+          agrees_with_diagnosis?: boolean | null
+          clinician_id?: string
+          confidence_level?: number | null
+          created_at?: string
+          diagnostic_result_id?: string | null
+          id?: string
+          observed_behaviors?: string[] | null
+          severity_rating?: number | null
+          student_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teacher_feedback_diagnostic_result_id_fkey"
+            columns: ["diagnostic_result_id"]
+            isOneToOne: false
+            referencedRelation: "diagnostic_results"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teacher_feedback_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       upload_chunks: {
         Row: {

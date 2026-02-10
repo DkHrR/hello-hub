@@ -18,6 +18,8 @@ import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
 import DatasetUpload from "./pages/DatasetUpload";
+import AdminAnalytics from "./pages/AdminAnalytics";
+import ResearchDashboard from "./pages/ResearchDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -69,6 +71,16 @@ const App = () => (
                 <Route path="/profile" element={
                   <ProtectedRoute>
                     <Profile />
+                  </ProtectedRoute>
+                } />
+                <Route path="/admin-analytics" element={
+                  <ProtectedRoute>
+                    <AdminAnalytics />
+                  </ProtectedRoute>
+                } />
+                <Route path="/research" element={
+                  <ProtectedRoute>
+                    <ResearchDashboard />
                   </ProtectedRoute>
                 } />
                 <Route path="*" element={<NotFound />} />
