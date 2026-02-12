@@ -240,7 +240,7 @@ export default function DashboardPage() {
                     { label: 'Total Students', value: stats.totalStudents.toString(), icon: Users },
                     { label: 'Assessments', value: stats.totalAssessments.toString(), icon: FileText },
                     { label: 'High Risk', value: stats.highRiskCount.toString(), icon: AlertTriangle },
-                    { label: 'Interventions', value: Math.floor(stats.highRiskCount * 0.7).toString(), icon: TrendingUp },
+                    { label: 'Moderate Risk', value: stats.moderateRiskCount?.toString() || '0', icon: TrendingUp },
                   ].map((stat) => (
                     <Card key={stat.label}>
                       <CardContent className="p-6">

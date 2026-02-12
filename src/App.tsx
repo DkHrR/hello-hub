@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { DeviceProvider } from "@/contexts/DeviceContext";
 import { OfflineProvider } from "@/contexts/OfflineContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AdminRoute } from "@/components/auth/AdminRoute";
 import { OfflineBanner } from "@/components/offline/OfflineIndicator";
 import Index from "./pages/Index";
 import Assessment from "./pages/Assessment";
@@ -64,9 +65,9 @@ const App = () => (
                   </ProtectedRoute>
                 } />
                 <Route path="/dataset-upload" element={
-                  <ProtectedRoute>
+                  <AdminRoute>
                     <DatasetUpload />
-                  </ProtectedRoute>
+                  </AdminRoute>
                 } />
                 <Route path="/profile" element={
                   <ProtectedRoute>
@@ -74,14 +75,14 @@ const App = () => (
                   </ProtectedRoute>
                 } />
                 <Route path="/admin-analytics" element={
-                  <ProtectedRoute>
+                  <AdminRoute>
                     <AdminAnalytics />
-                  </ProtectedRoute>
+                  </AdminRoute>
                 } />
                 <Route path="/research" element={
-                  <ProtectedRoute>
+                  <AdminRoute>
                     <ResearchDashboard />
-                  </ProtectedRoute>
+                  </AdminRoute>
                 } />
                 <Route path="*" element={<NotFound />} />
               </Routes>
