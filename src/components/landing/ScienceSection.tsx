@@ -100,7 +100,7 @@ export function ScienceSection() {
           ))}
         </div>
 
-        {/* Neural Risk Engine */}
+        {/* Multimodal Diagnostic Pipeline */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
@@ -111,17 +111,16 @@ export function ScienceSection() {
             <div>
               <h3 className="text-2xl font-bold mb-4 flex items-center gap-3">
                 <LineChart className="w-8 h-8" />
-                Neural Risk Engine
+                Multimodal Diagnostic Pipeline
               </h3>
               <p className="text-primary-foreground/80 mb-6">
-                Our proprietary machine learning algorithm (Random Forest + CNN hybrid)
-                combines all input modalities into a unified{' '}
-                <strong>Dyslexia Probability Index</strong>. The model is trained on
-                100,000+ clinical assessments with continuous validation against
-                gold-standard diagnostic criteria.
+                Our ETDD70-calibrated diagnostic engine simultaneously captures
+                webcam gaze data, voice audio, and handwriting samples to compute
+                a unified <strong>Dyslexia Probability Index</strong> using
+                real clinical thresholds derived from research datasets.
               </p>
               <ul className="space-y-2">
-                {['Multi-input fusion architecture', 'Real-time inference engine', 'Explainable AI outputs', 'Continuous model updates'].map((item) => (
+                {['Eye tracking with fixation & saccade analysis', 'Voice prosody & fluency scoring', 'Handwriting OCR reversal detection', 'AI-powered clinical report generation'].map((item) => (
                   <li key={item} className="flex items-center gap-2">
                     <Shield className="w-4 h-4" />
                     {item}
@@ -130,7 +129,12 @@ export function ScienceSection() {
               </ul>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {researchBacking.map((stat) => (
+              {[
+                { value: 'ETDD70', label: 'Dataset Baseline' },
+                { value: '3', label: 'Input Modalities' },
+                { value: 'Real-time', label: 'Processing' },
+                { value: 'HIPAA', label: 'Compliant Privacy' },
+              ].map((stat) => (
                 <div
                   key={stat.label}
                   className="p-4 rounded-xl bg-primary-foreground/10 text-center"

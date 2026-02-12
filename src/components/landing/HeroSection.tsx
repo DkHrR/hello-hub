@@ -101,7 +101,7 @@ export function HeroSection() {
             <div className="grid grid-cols-2 gap-6">
               {[
                 { value: '10-15%', label: 'Global Prevalence' },
-                { value: '98.7%', label: 'Detection Accuracy' },
+                { value: '3', label: 'Input Modalities' },
               ].map((stat, i) => (
                 <motion.div
                   key={stat.label}

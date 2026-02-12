@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Brain, Menu, X, LogIn, LogOut, User } from 'lucide-react';
+import { Brain, Menu, X, LogIn, LogOut, User, Shield } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useAdmin } from '@/hooks/useAdmin';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +31,7 @@ export function Header() {
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuth();
   const { isIndividual, hasRole } = useUserRole();
+  const { isAdmin } = useAdmin();
 
   // Build nav links based on role - hide Students for individual users
   const navLinks = isIndividual || hasRole('parent') 
@@ -103,6 +105,27 @@ export function Header() {
                       Start Assessment
                     </Link>
                   </DropdownMenuItem>
+                  {isAdmin && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link to="/admin-analytics" className="cursor-pointer">
+                          <Shield className="w-4 h-4 mr-2" />
+                          Admin Analytics
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/dataset-upload" className="cursor-pointer">
+                          Dataset Upload
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/research" className="cursor-pointer">
+                          Research Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive">
                     <LogOut className="w-4 h-4 mr-2" />
