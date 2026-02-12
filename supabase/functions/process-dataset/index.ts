@@ -6,7 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Supported metrics for each dataset type
 const METRIC_KEYS: Record<string, string[]> = {
   dyslexia: [
     'fixation_duration_avg', 'regression_rate', 'saccade_amplitude',
@@ -29,46 +28,34 @@ interface SubjectRecord {
   [key: string]: string | number | undefined;
 }
 
-function parseCSV(text: string): SubjectRecord[] {
-  const lines = text.trim().split('\n');
-  if (lines.length < 2) return [];
-
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
-  const records: SubjectRecord[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-
-    // Handle quoted CSV values
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (const char of line) {
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        values.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    values.push(current.trim());
-
-    const record: Record<string, string | number | undefined> = {};
-    headers.forEach((header, idx) => {
-      const val = values[idx]?.replace(/['"]/g, '');
-      const num = Number(val);
-      record[header] = isNaN(num) || val === '' ? val : num;
-    });
-
-    if (record.subject_id !== undefined && record.label !== undefined) {
-      records.push(record as SubjectRecord);
+function parseCSVLine(line: string, headers: string[]): SubjectRecord | null {
+  if (!line.trim()) return null;
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (const char of line) {
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += char;
     }
   }
+  values.push(current.trim());
 
-  return records;
+  const record: Record<string, string | number | undefined> = {};
+  headers.forEach((header, idx) => {
+    const val = values[idx]?.replace(/['"]/g, '');
+    const num = Number(val);
+    record[header] = isNaN(num) || val === '' ? val : num;
+  });
+
+  if (record.subject_id !== undefined && record.label !== undefined) {
+    return record as SubjectRecord;
+  }
+  return null;
 }
 
 function parseJSON(text: string): SubjectRecord[] {
@@ -99,13 +86,71 @@ function computeCohenD(posMean: number, posStd: number, negMean: number, negStd:
   return Math.abs(posMean - negMean) / pooledStd;
 }
 
+/**
+ * Stream-parse chunks one at a time to avoid loading entire file into memory.
+ * Each chunk is decoded, split into lines, and parsed individually.
+ * Only the parsed records (small objects) are kept in memory.
+ */
+async function streamParseChunks(
+  serviceClient: ReturnType<typeof createClient>,
+  bucketName: string,
+  chunks: Array<{ chunk_index: number; storage_path: string }>
+): Promise<SubjectRecord[]> {
+  const records: SubjectRecord[] = [];
+  let headers: string[] | null = null;
+  let leftover = ''; // Partial line from previous chunk
+
+  for (const chunk of chunks) {
+    const { data: chunkData, error: chunkErr } = await serviceClient.storage
+      .from(bucketName)
+      .download(chunk.storage_path);
+    
+    if (chunkErr || !chunkData) {
+      console.error(`[process-dataset] Failed to read chunk ${chunk.chunk_index}`);
+      continue;
+    }
+
+    // Decode this chunk and free the blob immediately
+    const text = leftover + await chunkData.text();
+    const lines = text.split('\n');
+    
+    // Last element might be incomplete - save for next chunk
+    leftover = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (!headers) {
+        // First non-empty line is the header
+        headers = trimmed.split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+        continue;
+      }
+
+      const record = parseCSVLine(trimmed, headers);
+      if (record) {
+        records.push(record);
+      }
+    }
+  }
+
+  // Process any remaining leftover
+  if (leftover.trim() && headers) {
+    const record = parseCSVLine(leftover.trim(), headers);
+    if (record) {
+      records.push(record);
+    }
+  }
+
+  return records;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    // Auth check
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -117,21 +162,18 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-    // User client for auth verification
     const userClient = createClient(supabaseUrl, supabaseAnon, {
       global: { headers: { Authorization: authHeader } }
     });
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    const userId = claimsData.claims.sub as string;
+    const userId = user.id;
 
-    // Service client for writes
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
@@ -147,20 +189,23 @@ serve(async (req) => {
 
     let records: SubjectRecord[] = [];
 
-    // Option 1: Raw data sent directly (for smaller datasets or pre-read files)
     if (rawData) {
       console.log('[process-dataset] Parsing raw data...');
-      // Try JSON first, then CSV
       records = parseJSON(rawData);
       if (records.length === 0) {
-        records = parseCSV(rawData);
+        // Parse CSV from raw string
+        const lines = rawData.trim().split('\n');
+        if (lines.length >= 2) {
+          const headers = lines[0].split(',').map((h: string) => h.trim().toLowerCase().replace(/['"]/g, ''));
+          for (let i = 1; i < lines.length; i++) {
+            const record = parseCSVLine(lines[i], headers);
+            if (record) records.push(record);
+          }
+        }
       }
-    }
-    // Option 2: Read from storage via upload ID
-    else if (uploadId) {
+    } else if (uploadId) {
       console.log(`[process-dataset] Reading from upload ${uploadId}`);
 
-      // Get upload metadata
       const { data: upload, error: uploadErr } = await serviceClient
         .from('chunked_uploads')
         .select('*')
@@ -173,18 +218,31 @@ serve(async (req) => {
         });
       }
 
-      // Read file from storage
+      // Try reading the assembled file first (for small single-chunk uploads)
       const storagePath = `${upload.storage_prefix}/${upload.file_name}`;
       const { data: fileData, error: fileErr } = await serviceClient.storage
         .from(upload.bucket_name)
         .download(storagePath);
 
-      if (fileErr || !fileData) {
-        // Try reading individual chunks and reassembling
-        console.log('[process-dataset] Trying to read individual chunks...');
+      if (!fileErr && fileData) {
+        const text = await fileData.text();
+        records = parseJSON(text);
+        if (records.length === 0) {
+          const lines = text.trim().split('\n');
+          if (lines.length >= 2) {
+            const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+            for (let i = 1; i < lines.length; i++) {
+              const record = parseCSVLine(lines[i], headers);
+              if (record) records.push(record);
+            }
+          }
+        }
+      } else {
+        // Stream-parse chunks one at a time to stay within memory limits
+        console.log('[process-dataset] Stream-parsing individual chunks...');
         const { data: chunks, error: chunksErr } = await serviceClient
           .from('upload_chunks')
-          .select('*')
+          .select('chunk_index, storage_path')
           .eq('upload_id', uploadId)
           .order('chunk_index', { ascending: true });
 
@@ -194,39 +252,7 @@ serve(async (req) => {
           });
         }
 
-        // Read and combine chunks
-        const chunkContents: Uint8Array[] = [];
-        for (const chunk of chunks) {
-          const { data: chunkData, error: chunkErr } = await serviceClient.storage
-            .from(upload.bucket_name)
-            .download(chunk.storage_path);
-          if (chunkErr || !chunkData) {
-            console.error(`Failed to read chunk ${chunk.chunk_index}`);
-            continue;
-          }
-          chunkContents.push(new Uint8Array(await chunkData.arrayBuffer()));
-        }
-
-        // Combine chunks
-        const totalLength = chunkContents.reduce((sum, c) => sum + c.length, 0);
-        const combined = new Uint8Array(totalLength);
-        let offset = 0;
-        for (const chunk of chunkContents) {
-          combined.set(chunk, offset);
-          offset += chunk.length;
-        }
-
-        const text = new TextDecoder().decode(combined);
-        records = parseJSON(text);
-        if (records.length === 0) {
-          records = parseCSV(text);
-        }
-      } else {
-        const text = await fileData.text();
-        records = parseJSON(text);
-        if (records.length === 0) {
-          records = parseCSV(text);
-        }
+        records = await streamParseChunks(serviceClient, upload.bucket_name, chunks);
       }
     } else {
       return new Response(JSON.stringify({ error: 'Either uploadId or rawData is required' }), {
@@ -246,9 +272,8 @@ serve(async (req) => {
 
     // Extract features and store reference profiles
     const metricKeys = METRIC_KEYS[datasetType] || METRIC_KEYS.dyslexia;
-    let profilesInserted = 0;
 
-    // Delete existing profiles for this upload/user/type combo to allow re-processing
+    // Delete existing profiles
     if (uploadId) {
       await serviceClient
         .from('dataset_reference_profiles')
@@ -263,35 +288,34 @@ serve(async (req) => {
         .eq('uploaded_by', userId);
     }
 
-    // Insert reference profiles
-    const profilesToInsert = records.map(record => {
-      const features: Record<string, number> = {};
-      for (const key of metricKeys) {
-        const val = record[key];
-        if (val !== undefined && val !== '' && !isNaN(Number(val))) {
-          features[key] = Number(val);
-        }
-      }
-      // Also capture any numeric columns we didn't explicitly list
-      for (const [key, val] of Object.entries(record)) {
-        if (key !== 'subject_id' && key !== 'label' && !features[key] && val !== undefined && val !== '' && !isNaN(Number(val))) {
-          features[key] = Number(val);
-        }
-      }
+    // Build and insert profiles in batches
+    let profilesInserted = 0;
+    const BATCH_SIZE = 50;
 
-      return {
-        dataset_type: datasetType,
-        subject_label: String(record.subject_id),
-        is_positive: isPositiveLabel(String(record.label)),
-        features,
-        source_upload_id: uploadId || null,
-        uploaded_by: userId,
-      };
-    });
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batch = records.slice(i, i + BATCH_SIZE).map(record => {
+        const features: Record<string, number> = {};
+        for (const key of metricKeys) {
+          const val = record[key];
+          if (val !== undefined && val !== '' && !isNaN(Number(val))) {
+            features[key] = Number(val);
+          }
+        }
+        for (const [key, val] of Object.entries(record)) {
+          if (key !== 'subject_id' && key !== 'label' && !features[key] && val !== undefined && val !== '' && !isNaN(Number(val))) {
+            features[key] = Number(val);
+          }
+        }
+        return {
+          dataset_type: datasetType,
+          subject_label: String(record.subject_id),
+          is_positive: isPositiveLabel(String(record.label)),
+          features,
+          source_upload_id: uploadId || null,
+          uploaded_by: userId,
+        };
+      });
 
-    // Insert in batches of 50
-    for (let i = 0; i < profilesToInsert.length; i += 50) {
-      const batch = profilesToInsert.slice(i, i + 50);
       const { error: insertErr } = await serviceClient
         .from('dataset_reference_profiles')
         .insert(batch);
@@ -302,12 +326,15 @@ serve(async (req) => {
       }
     }
 
+    // Free records from memory
+    records.length = 0;
+
     console.log(`[process-dataset] Inserted ${profilesInserted} reference profiles`);
 
-    // Compute thresholds from all profiles of this type
+    // Compute thresholds - fetch only needed columns
     const { data: allProfiles, error: profilesErr } = await serviceClient
       .from('dataset_reference_profiles')
-      .select('*')
+      .select('is_positive, features')
       .eq('dataset_type', datasetType);
 
     if (profilesErr || !allProfiles?.length) {
@@ -321,49 +348,45 @@ serve(async (req) => {
       });
     }
 
-    const positiveProfiles = allProfiles.filter((p: { is_positive: boolean }) => p.is_positive);
-    const negativeProfiles = allProfiles.filter((p: { is_positive: boolean }) => !p.is_positive);
-
-    console.log(`[process-dataset] Computing thresholds: ${positiveProfiles.length} positive, ${negativeProfiles.length} negative`);
-
-    // Collect all unique metric names across all profiles
+    // Collect metric values incrementally without storing all profiles
     const allMetricNames = new Set<string>();
+    const posValues: Record<string, number[]> = {};
+    const negValues: Record<string, number[]> = {};
+
     for (const profile of allProfiles) {
       const features = profile.features as Record<string, number>;
-      for (const key of Object.keys(features)) {
+      const isPos = profile.is_positive;
+      for (const [key, val] of Object.entries(features)) {
+        if (val === undefined || isNaN(val)) continue;
         allMetricNames.add(key);
+        const target = isPos ? posValues : negValues;
+        if (!target[key]) target[key] = [];
+        target[key].push(val);
       }
     }
 
-    // Delete existing thresholds for this dataset type
+    // Delete existing thresholds
     await serviceClient
       .from('dataset_computed_thresholds')
       .delete()
       .eq('dataset_type', datasetType);
 
-    // Compute thresholds per metric
     const thresholds: Array<Record<string, unknown>> = [];
 
     for (const metric of allMetricNames) {
-      const positiveValues = positiveProfiles
-        .map((p: { features: Record<string, number> }) => p.features[metric])
-        .filter((v: number | undefined): v is number => v !== undefined && !isNaN(v));
-      const negativeValues = negativeProfiles
-        .map((p: { features: Record<string, number> }) => p.features[metric])
-        .filter((v: number | undefined): v is number => v !== undefined && !isNaN(v));
+      const positiveValues = posValues[metric] || [];
+      const negativeValues = negValues[metric] || [];
 
       if (positiveValues.length === 0 && negativeValues.length === 0) continue;
 
       const posStats = computeStats(positiveValues);
       const negStats = computeStats(negativeValues);
 
-      // Optimal threshold: weighted midpoint between means
       const totalSamples = positiveValues.length + negativeValues.length;
       const posWeight = totalSamples > 0 ? positiveValues.length / totalSamples : 0.5;
       const negWeight = totalSamples > 0 ? negativeValues.length / totalSamples : 0.5;
       const optimalThreshold = posStats.mean * negWeight + negStats.mean * posWeight;
 
-      // Weight = Cohen's d (effect size)
       const cohenD = computeCohenD(posStats.mean, posStats.std, negStats.mean, negStats.std);
 
       thresholds.push({
@@ -374,14 +397,13 @@ serve(async (req) => {
         negative_mean: negStats.mean,
         negative_std: negStats.std,
         optimal_threshold: optimalThreshold,
-        weight: Math.min(cohenD, 5), // Cap weight at 5
+        weight: Math.min(cohenD, 5),
         sample_size_positive: positiveValues.length,
         sample_size_negative: negativeValues.length,
         computed_at: new Date().toISOString(),
       });
     }
 
-    // Insert thresholds
     let thresholdsComputed = 0;
     if (thresholds.length > 0) {
       const { error: threshErr } = await serviceClient
@@ -400,8 +422,8 @@ serve(async (req) => {
       success: true,
       profilesInserted,
       thresholdsComputed,
-      positiveCount: positiveProfiles.length,
-      negativeCount: negativeProfiles.length,
+      positiveCount: Object.values(posValues)[0]?.length || 0,
+      negativeCount: Object.values(negValues)[0]?.length || 0,
       metrics: Array.from(allMetricNames),
       thresholdsSummary: thresholds.map(t => ({
         metric: t.metric_name,
@@ -417,7 +439,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('[process-dataset] Error:', error);
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : 'Internal server error' 
+      error: 'Internal server error'
     }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
